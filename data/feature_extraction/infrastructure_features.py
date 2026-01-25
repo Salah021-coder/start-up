@@ -1,3 +1,6 @@
+# ============================================================================
+# FILE: data/feature_extraction/infrastructure_features.py (FIXED)
+# ============================================================================
 
 from typing import Dict, Tuple
 import requests
@@ -10,8 +13,31 @@ class InfrastructureFeatureExtractor:
     def __init__(self):
         self.osm_api_base = "https://overpass-api.de/api/interpreter"
     
-    def extract(self, centroid: Tuple[float, float], geometry) -> Dict:
-        """Extract infrastructure features"""
+    def extract(self, ee_geometry, centroid: Tuple[float, float] = None, geometry = None) -> Dict:
+        """
+        Extract infrastructure features
+        Args:
+            ee_geometry: Earth Engine geometry (can be None)
+            centroid: Tuple of (lon, lat) - optional
+            geometry: Shapely geometry - optional
+        """
+        # Get centroid from different sources
+        if centroid is None:
+            if geometry is not None:
+                # Calculate from Shapely geometry
+                centroid_point = geometry.centroid
+                centroid = (centroid_point.x, centroid_point.y)
+            elif ee_geometry is not None:
+                # Calculate from EE geometry
+                try:
+                    coords = ee_geometry.centroid().coordinates().getInfo()
+                    centroid = (coords[0], coords[1])
+                except:
+                    # Default fallback
+                    centroid = (0, 0)
+            else:
+                # Default fallback
+                centroid = (0, 0)
         
         lon, lat = centroid
         
