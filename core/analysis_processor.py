@@ -45,77 +45,75 @@ class AnalysisProcessor:
     # Public method to run analysis
     # -----------------------------
     def run_analysis(
-        self,
-        boundary_data: Dict,
-        criteria: Dict,
-        progress_callback: Optional[Callable[[str, int], None]] = None
-    ) -> Dict:
-        """Run the full land evaluation analysis pipeline."""
-        
-        if not self.ee_available:
-            raise RuntimeError(
-                "Google Earth Engine is required for analysis. "
-                "Please authenticate: earthengine authenticate"
-            )
+    self,
+    boundary_data: Dict,
+    criteria: Dict,
+    progress_callback: Optional[Callable[[str, int], None]] = None
+) -> Dict:
+    """Run the full land evaluation analysis pipeline."""
+    
+    if not self.ee_available:
+        raise RuntimeError(
+            "Google Earth Engine is required for analysis. "
+            "Please authenticate: earthengine authenticate"
+        )
 
-        logger.info("Starting land evaluation analysis...")
-        results = {}
+    logger.info("Starting land evaluation analysis...")
+    results = {}
 
-        try:
-            # -----------------------------
-            # Step 1: Extract features
-            # -----------------------------
+    try:
+        # Step 1: Extract terrain features
+        if self.terrain_extractor:
             if progress_callback:
-                progress_callback("Collecting satellite and terrain data...", 10)
+                progress_callback("Collecting terrain features...", 10)
+            results['terrain_features'] = self.terrain_extractor.extract(boundary_data)
 
-            # Terrain features
-            terrain_features = self.terrain_extractor.extract(boundary_data)
-            results['terrain_features'] = terrain_features
-
-            # Environmental features
-            env_features = self.env_extractor.extract(boundary_data)
-            results['environmental_features'] = env_features
-
-            # Infrastructure features (requires geometry)
-            infra_features = self.infra_extractor.extract(boundary_data['geometry'])
-            results['infrastructure_features'] = infra_features
-
+        # Step 2: Extract environmental features
+        if self.env_extractor:
             if progress_callback:
-                progress_callback("Features extracted successfully", 40)
+                progress_callback("Collecting environmental features...", 20)
+            results['environmental_features'] = self.env_extractor.extract(boundary_data)
 
-            # -----------------------------
-            # Step 2: AHP weighting
-            # -----------------------------
-            if progress_callback:
-                progress_callback("Computing AHP weights...", 50)
+        # Step 3: Extract infrastructure features (requires geometry)
+        if progress_callback:
+            progress_callback("Collecting infrastructure features...", 30)
 
-            weights = self.ahp_solver.compute_weights(criteria)
-            results['weights'] = weights
+        # Safe geometry extraction
+        geometry = None
+        if 'geometry' in boundary_data:
+            geometry = boundary_data['geometry']
+        elif 'geojson' in boundary_data:
+            geometry = boundary_data['geojson']
+        else:
+            # fallback: maybe the boundary_data itself is geometry
+            geometry = boundary_data
 
-            # -----------------------------
-            # Step 3: Machine learning suitability prediction
-            # -----------------------------
-            if progress_callback:
-                progress_callback("Predicting land suitability...", 70)
+        results['infrastructure_features'] = self.infra_extractor.extract(geometry)
 
-            suitability_map = self.ml_predictor.predict(results)
-            results['suitability_map'] = suitability_map
+        if progress_callback:
+            progress_callback("Features extracted successfully", 50)
 
-            # -----------------------------
-            # Step 4: Aggregate scores & recommendations
-            # -----------------------------
-            if progress_callback:
-                progress_callback("Aggregating scores and generating recommendations...", 90)
+        # Step 4: Compute AHP weights
+        if progress_callback:
+            progress_callback("Computing AHP weights...", 60)
+        results['weights'] = self.ahp_solver.compute_weights(criteria)
 
-            recommendations = self.score_aggregator.aggregate(results)
-            results['recommendations'] = recommendations
+        # Step 5: ML suitability prediction
+        if progress_callback:
+            progress_callback("Predicting land suitability...", 80)
+        results['suitability_map'] = self.ml_predictor.predict(results)
 
-            if progress_callback:
-                progress_callback("Analysis complete!", 100)
+        # Step 6: Aggregate scores & recommendations
+        if progress_callback:
+            progress_callback("Aggregating scores and generating recommendations...", 90)
+        results['recommendations'] = self.score_aggregator.aggregate(results)
 
-            logger.info("Land evaluation analysis completed successfully.")
-            return results
+        if progress_callback:
+            progress_callback("Analysis complete!", 100)
 
-        except Exception as e:
-            logger.error(f"Analysis failed: {str(e)}")
-            raise
+        logger.info("Land evaluation analysis completed successfully.")
+        return results
+
+    except Exception as e:
+        logger.error(f"Analysis failed: {str(e)}")
+        raise
