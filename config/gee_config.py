@@ -83,3 +83,55 @@ class GEEConfig:
                         key_data=service_account_info['private_key']
                     )
                     
+                    ee.Initialize(credentials, project=project_id)
+                    print("✓ Earth Engine initialized with Streamlit Cloud secrets")
+                    return True
+            except ImportError:
+                # Streamlit not available (running locally)
+                pass
+            except Exception as e:
+                print(f"Streamlit secrets method failed: {e}")
+            
+            # === LOCAL: Try service account file ===
+            if cls.SERVICE_ACCOUNT_KEY and Path(cls.SERVICE_ACCOUNT_KEY).exists():
+                credentials = ee.ServiceAccountCredentials(
+                    email=None,
+                    key_file=cls.SERVICE_ACCOUNT_KEY
+                )
+                ee.Initialize(credentials, project=cls.PROJECT_ID)
+                print("✓ Earth Engine initialized with service account file")
+                return True
+            
+            # === LOCAL: Try user authentication ===
+            try:
+                ee.Initialize(project=cls.PROJECT_ID)
+                print("✓ Earth Engine initialized with user credentials")
+                return True
+            except ee.EEException as e:
+                if 'credentials' in str(e).lower():
+                    print("❌ Earth Engine not authenticated")
+                    print("   Please run: earthengine authenticate")
+                    return False
+                raise
+                
+        except Exception as e:
+            print(f"✗ Earth Engine initialization failed: {e}")
+            print("\nFor local development, run: earthengine authenticate")
+            print("For Streamlit Cloud, add service account to secrets")
+            return False
+    
+    @classmethod
+    def get_dataset(cls, category: str, name: str) -> str:
+        """Get dataset ID by category and name"""
+        return cls.DATASETS.get(category, {}).get(name)
+    
+    @classmethod
+    def test_connection(cls):
+        """Test Earth Engine connection and report status"""
+        try:
+            ee.Number(1).getInfo()
+            print("✓ Earth Engine connection OK")
+            return True
+        except Exception as e:
+            print(f"❌ Earth Engine connection failed: {e}")
+            return False
