@@ -4,53 +4,56 @@ import ee
 import json
 import streamlit as st
 
+
 class EarthEngineManager:
+    _initialized = False
     _available = False
 
     @classmethod
     def initialize(cls) -> bool:
+        if cls._initialized:
+            return cls._available
+
         try:
-            # ✅ Already initialized (Streamlit rerun-safe)
-            if ee.data._initialized:
-                cls._available = True
-                return True
-
-            # ===== Streamlit Cloud =====
-            if "GEE_SERVICE_ACCOUNT_JSON" not in st.secrets:
-                raise RuntimeError("GEE_SERVICE_ACCOUNT_JSON not found in Streamlit secrets")
-
-            info = json.loads(st.secrets["GEE_SERVICE_ACCOUNT_JSON"])
+            # Load service account JSON from Streamlit secrets
+            service_account_info = json.loads(
+                st.secrets["GEE_SERVICE_ACCOUNT_JSON"]
+            )
 
             credentials = ee.ServiceAccountCredentials(
-                info["client_email"],
-                key_data=st.secrets["GEE_SERVICE_ACCOUNT_JSON"]
+                service_account_info["client_email"],
+                key_data=json.dumps(service_account_info)
             )
 
             ee.Initialize(
-                credentials=credentials,
+                credentials,
                 project=st.secrets["GEE_PROJECT_ID"]
             )
 
-            # 🔍 Hard test (forces auth validation)
-            ee.Number(1).getInfo()
+            # Hard test (real EE call)
+            ee.Image("CGIAR/SRTM90_V4").getInfo()
 
             cls._available = True
+            cls._initialized = True
             print("✅ Earth Engine initialized successfully (Streamlit Cloud)")
             return True
 
         except Exception as e:
+            print(f"❌ Earth Engine initialization failed: {e}")
             cls._available = False
-            print("❌ Earth Engine init failed:", e)
+            cls._initialized = True
             return False
 
     @classmethod
     def is_available(cls) -> bool:
+        if not cls._initialized:
+            cls.initialize()
         return cls._available
 
     @classmethod
     def require_ee(cls):
-        if not cls._available:
+        if not cls.is_available():
             raise RuntimeError(
-                "Earth Engine unavailable.\n"
-                "Check Streamlit secrets + service account permissions."
+                "Google Earth Engine is not available. "
+                "Check Streamlit Secrets configuration."
             )
