@@ -35,33 +35,35 @@ class AnalysisProcessor:
         self.ml_predictor = SuitabilityPredictor()
         self.score_aggregator = ScoreAggregator()
 
-    def _extract_all_features(self, boundary_data: Dict) -> Dict:
-        """
-        Extract all features for the analysis:
-        - Terrain (DEM, slope, aspect)
-        - Environmental (NDVI, water, landcover)
-        - Infrastructure (roads, services)
-        """
+def _extract_all_features(self, boundary_data: Dict) -> Dict:
+    """
+    Extract all features for the analysis:
+    - Terrain (DEM, slope, aspect)
+    - Environmental (NDVI, water, landcover)
+    - Infrastructure (roads, services)
+    """
+    logger.info("Extracting all features...")
+    all_features = {}
 
-        logger.info("Extracting all features...")
+    # Terrain & environmental features (EE required)
+    if self.ee_available:
+        terrain_features = self.terrain_extractor.extract(boundary_data)
+        env_features = self.env_extractor.extract(boundary_data)
+        all_features.update(terrain_features)
+        all_features.update(env_features)
+    else:
+        logger.warning("EE not available, skipping terrain/environmental features")
 
-        all_features = {}
+    # Infrastructure features (local)
+    geometry = boundary_data.get('geometry')  # <-- pass geometry explicitly
+    if geometry is None:
+        raise ValueError("boundary_data must contain a 'geometry' key for infrastructure extraction")
+    infra_features = self.infra_extractor.extract(geometry)
+    all_features.update(infra_features)
 
-        # Terrain features (EE required)
-        if self.ee_available:
-            terrain_features = self.terrain_extractor.extract(boundary_data)
-            env_features = self.env_extractor.extract(boundary_data)
-            all_features.update(terrain_features)
-            all_features.update(env_features)
-        else:
-            logger.warning("EE not available, skipping terrain/environmental features")
+    logger.info("Feature extraction complete")
+    return all_features
 
-        # Infrastructure features (local)
-        infra_features = self.infra_extractor.extract(boundary_data)
-        all_features.update(infra_features)
-
-        logger.info("Feature extraction complete")
-        return all_features
 
     def run_analysis(
         self,
@@ -109,3 +111,4 @@ class AnalysisProcessor:
         except Exception as e:
             logger.error(f"Analysis failed: {str(e)}")
             raise
+
