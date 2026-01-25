@@ -69,16 +69,12 @@ class GEEConfig:
                 import streamlit as st
                 if hasattr(st, "secrets") and "gee" in st.secrets:
                     print("Attempting Earth Engine init with Streamlit secrets...")
-
-                    # Get service account from secrets
                     service_account_info = st.secrets["gee"]["service_account"]
                     project_id = st.secrets["gee"].get("project_id", cls.PROJECT_ID)
 
-                    # Parse JSON if it's a string
                     if isinstance(service_account_info, str):
                         service_account_info = json.loads(service_account_info)
 
-                    # Create credentials from the JSON data
                     credentials = ee.ServiceAccountCredentials(
                         email=service_account_info["client_email"],
                         key_data=service_account_info["private_key"]
@@ -88,7 +84,6 @@ class GEEConfig:
                     print("✓ Earth Engine initialized with Streamlit Cloud secrets")
                     return True
             except ImportError:
-                # Streamlit not available (running locally)
                 pass
             except Exception as e:
                 print(f"Streamlit secrets method failed: {e}")
@@ -123,3 +118,16 @@ class GEEConfig:
 
     @classmethod
     def get_dataset(cls, category: str, name: str) -> str:
+        """Get dataset ID by category and name"""
+        return cls.DATASETS.get(category, {}).get(name, None)
+
+    @classmethod
+    def test_connection(cls):
+        """Test Earth Engine connectivity"""
+        try:
+            ee.Number(1).getInfo()
+            print("✓ Earth Engine connection OK")
+            return True
+        except Exception as e:
+            print(f"❌ Earth Engine connection failed: {e}")
+            return False
