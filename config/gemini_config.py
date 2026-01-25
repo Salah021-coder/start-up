@@ -1,12 +1,32 @@
+# ============================================================================
+# FILE: config/gemini_config.py (STREAMLIT CLOUD COMPATIBLE)
+# ============================================================================
+
 import os
 from typing import Dict
 
 class GeminiConfig:
-    """Gemini AI Configuration"""
+    """Gemini AI Configuration - Works locally and on Streamlit Cloud"""
     
-    # API Configuration
-    API_KEY = os.getenv('GEMINI_API_KEY')
-    MODEL_NAME = 'gemini-1.5-pro'  # or 'gemini-1.5-flash' for faster responses
+    # API Configuration - Dynamic based on environment
+    @staticmethod
+    def get_api_key():
+        """Get API key from Streamlit secrets or environment variable"""
+        # Try Streamlit secrets first (Cloud)
+        try:
+            import streamlit as st
+            if hasattr(st, 'secrets') and 'gemini' in st.secrets:
+                return st.secrets["gemini"]["api_key"]
+        except ImportError:
+            pass
+        except Exception:
+            pass
+        
+        # Fall back to environment variable (Local)
+        return os.getenv('GEMINI_API_KEY')
+    
+    API_KEY = None  # Will be set dynamically
+    MODEL_NAME = 'gemini-2.5-pro'
     
     # Generation Configuration
     TEMPERATURE = 0.7
