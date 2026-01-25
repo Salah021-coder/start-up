@@ -1,0 +1,52 @@
+application:
+  name: "Land Evaluation AI"
+  version: "1.0.0"
+  debug: false
+
+criteria:
+  residential:
+    terrain:
+      slope: 0.25
+      elevation: 0.15
+    infrastructure:
+      road_proximity: 0.20
+    environmental:
+      flood_risk: 0.15
+      green_space: 0.10
+    utilities:
+      water_access: 0.15
+  
+  agricultural:
+    soil:
+      fertility: 0.30
+      drainage: 0.20
+    water:
+      irrigation_potential: 0.25
+    terrain:
+      slope: 0.15
+    climate:
+      precipitation: 0.10
+  
+  commercial:
+    infrastructure:
+      road_access: 0.25
+      population_density: 0.20
+    economic:
+      market_value: 0.20
+    utilities:
+      all_utilities: 0.20
+    visibility:
+      traffic_flow: 0.15
+
+thresholds:
+  slope:
+    flat: [0, 3]
+    gentle: [3, 8]
+    moderate: [8, 15]
+    steep: [15, 30]
+    very_steep: [30, 999]
+  
+  flood_risk:
+    low: [0, 10]
+    medium: [10, 30]
+    high: [30, 100]

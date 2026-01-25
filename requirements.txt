@@ -1,0 +1,54 @@
+# Core Framework
+streamlit>=1.28.0
+
+# Google Earth Engine
+earthengine-api>=0.1.370
+
+# Geospatial Libraries
+geopandas>=0.13.0
+shapely>=2.0.0
+fiona>=1.9.0
+pyproj>=3.6.0
+folium>=0.14.0
+streamlit-folium>=0.15.0
+streamlit-drawable-canvas>=0.9.0
+streamlit-folium>=0.15.0
+branca>=0.6.0
+
+# Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Machine Learning
+scikit-learn>=1.3.0
+xgboost>=2.0.0
+joblib>=1.3.0
+
+# Visualization
+plotly>=5.17.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# AI Integration
+google-generativeai>=0.3.0
+
+# Database
+sqlalchemy>=2.0.0
+alembic>=1.12.0
+
+# Configuration
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# Utilities
+python-dateutil>=2.8.0
+requests>=2.31.0
+tqdm>=4.66.0
+
+# PDF Generation
+reportlab>=4.0.0
+fpdf2>=2.7.0
+
+# Testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
