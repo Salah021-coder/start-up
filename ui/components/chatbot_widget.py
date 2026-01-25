@@ -101,5 +101,9 @@ def _handle_message(message: str):
             "role": "assistant",
             "content": "⚠️ Chatbot disabled. Cannot answer at the moment."
         })
+        
+        st.sidebar.write("🔑 Gemini key loaded:",
+                 "YES" if "gemini" in st.secrets else "NO")
     
     st.rerun()
+
