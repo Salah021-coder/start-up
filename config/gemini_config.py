@@ -8,24 +8,6 @@ from typing import Dict
 class GeminiConfig:
     """Gemini AI Configuration - Works locally and on Streamlit Cloud"""
     
-    # API Configuration - Dynamic based on environment
-    @staticmethod
-    def get_api_key():
-        """Get API key from Streamlit secrets or environment variable"""
-        # Try Streamlit secrets first (Cloud)
-        try:
-            import streamlit as st
-            if hasattr(st, 'secrets') and 'gemini' in st.secrets:
-                return st.secrets["gemini"]["api_key"]
-        except ImportError:
-            pass
-        except Exception:
-            pass
-        
-        # Fall back to environment variable (Local)
-        return os.getenv('GEMINI_API_KEY')
-    
-    API_KEY = None  # Will be set dynamically
     MODEL_NAME = 'gemini-2.5-pro'
     
     # Generation Configuration
@@ -36,32 +18,11 @@ class GeminiConfig:
     
     # Safety Settings
     SAFETY_SETTINGS = [
-        {
-            "category": "HARM_CATEGORY_HARASSMENT",
-            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-            "category": "HARM_CATEGORY_HATE_SPEECH",
-            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-        },
-        {
-            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-            "threshold": "BLOCK_MEDIUM_AND_ABOVE"
-        }
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"}
     ]
-    
-    # Chat Configuration
-    MAX_HISTORY_LENGTH = 50
-    CONTEXT_WINDOW = 30000
-    
-    # Feature Flags
-    ENABLE_CHAT_CACHE = True
-    ENABLE_STREAMING = True
-    ENABLE_FUNCTION_CALLING = False
     
     # System Prompts
     BASE_SYSTEM_PROMPT = """You are an expert land evaluation assistant specializing in real estate analysis.
@@ -83,10 +44,20 @@ Guidelines:
 - Suggest practical next steps when appropriate
 
 Always maintain a professional, friendly tone."""
-    
+
+    @staticmethod
+    def get_api_key():
+        """Fetch API key from Streamlit secrets or environment variable"""
+        try:
+            import streamlit as st
+            if hasattr(st, 'secrets') and 'gemini' in st.secrets:
+                return st.secrets["gemini"]["api_key"]
+        except Exception:
+            pass
+        return os.getenv("GEMINI_API_KEY")
+
     @classmethod
     def get_generation_config(cls) -> Dict:
-        """Get generation configuration as dictionary"""
         return {
             'temperature': cls.TEMPERATURE,
             'max_output_tokens': cls.MAX_OUTPUT_TOKENS,
