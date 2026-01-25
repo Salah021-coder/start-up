@@ -1,5 +1,6 @@
 import streamlit as st
 from typing import Optional, Dict
+from ai.chatbot.gemini_client import GeminiClient
 
 def render_chatbot(analysis_results: Optional[Dict] = None):
     """Render the Gemini chatbot widget safely without blocking UI."""
@@ -15,14 +16,12 @@ def render_chatbot(analysis_results: Optional[Dict] = None):
         st.session_state.setdefault("gemini_client", None)
         
         # Try to initialize Gemini client (non-blocking)
-        if st.session_state.gemini_client is None:
-            try:
-                from ai.chatbot.gemini_client import GeminiClient
-                st.session_state.gemini_client = GeminiClient()
-            except Exception as e:
-                st.session_state.gemini_client = None
-                st.warning("⚠️ Gemini AI not configured. Chatbot disabled.")
-                st.caption("Add GEMINI_API_KEY to .env or Streamlit secrets to enable.")
+        try:
+            st.session_state.gemini_client = GeminiClient()
+        except Exception as e:
+            st.error("❌ Gemini initialization FAILED")
+            st.exception(e)   # 👈 THIS shows the REAL error
+            st.stop()
         
         # Only initialize chat if client is available
         if st.session_state.gemini_client and not st.session_state.chat_initialized:
