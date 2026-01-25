@@ -1,89 +1,74 @@
 # ============================================================================
-# FILE: utils/ee_manager.py (COMPLETE VERSION)
+# FILE: utils/ee_manager.py (PRODUCTION-READY VERSION)
 # ============================================================================
 
 import os
+import json
 from pathlib import Path
+import streamlit as st
 
 class EarthEngineManager:
-    """Manage Google Earth Engine initialization"""
+    """Manage Google Earth Engine initialization (local + Streamlit Cloud safe)"""
     
     _initialized = False
     _available = False
     
     @classmethod
     def initialize(cls) -> bool:
-        """
-        Initialize Google Earth Engine
-        Returns True if successful, False otherwise
-        """
+        """Initialize Google Earth Engine"""
         if cls._initialized:
             return cls._available
         
         try:
             import ee
             
-            # Try to initialize
-            try:
-                # Check if already initialized
-                ee.Number(1).getInfo()
-                print("✓ Earth Engine already initialized")
+            # ===== Fast check for existing EE session =====
+            if ee.data._initialized:
                 cls._available = True
                 cls._initialized = True
+                print("✓ Earth Engine already initialized")
                 return True
-            except:
-                pass
             
-            # Check for service account credentials
+            # ===== Streamlit Cloud: use service account JSON from st.secrets =====
+            if "GEE_SERVICE_ACCOUNT_JSON" in st.secrets:
+                info = json.loads(st.secrets["GEE_SERVICE_ACCOUNT_JSON"])
+                credentials = ee.ServiceAccountCredentials(
+                    info["client_email"],
+                    key_data=st.secrets["GEE_SERVICE_ACCOUNT_JSON"]
+                )
+                ee.Initialize(credentials, project=st.secrets["GEE_PROJECT_ID"])
+                cls._available = True
+                cls._initialized = True
+                print("✓ Earth Engine initialized (Streamlit Cloud)")
+                return True
+            
+            # ===== Local: service account file =====
             service_account_key = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            project_id = os.getenv('GEE_PROJECT_ID', 'ee-project')
             
             if service_account_key and Path(service_account_key).exists():
-                # Use service account
-                credentials = ee.ServiceAccountCredentials(
-                    email=None,
-                    key_file=service_account_key
-                )
-                project_id = os.getenv('GEE_PROJECT_ID', 'ee-project')
+                credentials = ee.ServiceAccountCredentials(None, key_file=service_account_key)
                 ee.Initialize(credentials, project=project_id)
-                print("✓ Earth Engine initialized with service account")
                 cls._available = True
-                
-            else:
-                # Try user authentication
-                try:
-                    ee.Initialize()
-                    print("✓ Earth Engine initialized with user credentials")
-                    cls._available = True
-                except ee.EEException as e:
-                    if 'credentials' in str(e).lower() or 'authenticate' in str(e).lower():
-                        print("\n" + "="*60)
-                        print("⚠️  EARTH ENGINE NOT AUTHENTICATED")
-                        print("="*60)
-                        print("\nTo enable Earth Engine, run this command:")
-                        print("  earthengine authenticate")
-                        print("\nThen restart the application.")
-                        print("="*60 + "\n")
-                        cls._available = False
-                    else:
-                        print(f"⚠️ Earth Engine error: {e}")
-                        cls._available = False
+                cls._initialized = True
+                print("✓ Earth Engine initialized (local service account)")
+                return True
             
+            # ===== Local fallback: interactive authentication =====
+            print("⚠️ No service account found. Attempting interactive login...")
+            ee.Authenticate()
+            ee.Initialize()
+            cls._available = True
             cls._initialized = True
-            return cls._available
+            print("✓ Earth Engine initialized (interactive user authentication)")
+            return True
             
         except ImportError:
-            print("\n" + "="*60)
-            print("⚠️  EARTH ENGINE NOT INSTALLED")
-            print("="*60)
-            print("\nInstall Earth Engine with:")
-            print("  pip install earthengine-api")
-            print("\nThen authenticate with:")
-            print("  earthengine authenticate")
-            print("="*60 + "\n")
+            print("⚠️ Earth Engine API not installed. Install with: pip install earthengine-api")
             cls._available = False
             cls._initialized = True
             return False
-            
+        
         except Exception as e:
             print(f"⚠️ Earth Engine initialization failed: {e}")
             cls._available = False
@@ -92,16 +77,17 @@ class EarthEngineManager:
     
     @classmethod
     def is_available(cls) -> bool:
-        """Check if Earth Engine is available"""
+        """Return True if EE is available"""
         if not cls._initialized:
             cls.initialize()
         return cls._available
     
     @classmethod
     def require_ee(cls):
-        """Raise error if Earth Engine is not available"""
+        """Raise exception if EE not available"""
         if not cls.is_available():
             raise RuntimeError(
-                "Google Earth Engine is required for this operation.\n"
-                "Please run: earthengine authenticate"
+                "Google Earth Engine is required.\n"
+                "• Local: run `earthengine authenticate` or set GOOGLE_APPLICATION_CREDENTIALS\n"
+                "• Streamlit Cloud: set GEE_SERVICE_ACCOUNT_JSON in st.secrets"
             )
