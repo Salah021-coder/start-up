@@ -1,110 +1,53 @@
-# ============================================================================
-# FILE: config/gee_config.py (COMPLETE WORKING VERSION)
-# ============================================================================
-
 import os
 import ee
-from pathlib import Path
+import json
+import streamlit as st
 
 class GEEConfig:
     """Google Earth Engine Configuration"""
-    
-    # Authentication
-    SERVICE_ACCOUNT_KEY = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-    PROJECT_ID = os.getenv('GEE_PROJECT_ID', 'ee-project')
-    
-    # Dataset IDs
-    DATASETS = {
-        'elevation': {
-            'srtm': 'USGS/SRTMGL1_003',
-            'aster': 'ASTER/GDEM/V3'
-        },
-        'land_cover': {
-            'esa_worldcover': 'ESA/WorldCover/v200',
-            'modis': 'MODIS/006/MCD12Q1'
-        },
-        'vegetation': {
-            'sentinel2': 'COPERNICUS/S2_SR_HARMONIZED',
-            'landsat8': 'LANDSAT/LC08/C02/T1_L2'
-        },
-        'soil': {
-            'soilgrids': 'OpenLandMap/SOL/SOL_TEXTURE-CLASS_USDA-TT_M/v02'
-        },
-        'water': {
-            'jrc_water': 'JRC/GSW1_4/GlobalSurfaceWater',
-            'precipitation': 'UCSB-CHG/CHIRPS/DAILY'
-        },
-        'climate': {
-            'temperature': 'ECMWF/ERA5_LAND/DAILY_AGGR',
-            'precipitation': 'UCSB-CHG/CHIRPS/DAILY'
-        }
-    }
-    
-    # Processing parameters
-    SCALE = 30  # meters per pixel
-    MAX_PIXELS = 1e8
-    
-    # Date ranges for analysis
-    DEFAULT_DATE_RANGE = {
-        'start': '2023-01-01',
-        'end': '2023-12-31'
-    }
-    
+
     @classmethod
     def initialize(cls):
-        """Initialize Earth Engine"""
-        try:
-            # Check if already initialized
-            try:
-                ee.Number(1).getInfo()
-                print("✓ Earth Engine already initialized")
-                return True
-            except:
-                pass
-            
-            # Try service account first (for production)
-            if cls.SERVICE_ACCOUNT_KEY and Path(cls.SERVICE_ACCOUNT_KEY).exists():
-                credentials = ee.ServiceAccountCredentials(
-                    email=None,
-                    key_file=cls.SERVICE_ACCOUNT_KEY
-                )
-                ee.Initialize(credentials, project=cls.PROJECT_ID)
-                print("✓ Earth Engine initialized with service account")
-                return True
-            
-            # Fall back to user authentication
-            else:
-                # For user authentication, project parameter is optional
-                try:
-                    ee.Initialize()
-                    print("✓ Earth Engine initialized with user credentials")
-                    return True
-                except ee.EEException as e:
-                    if 'credentials' in str(e).lower():
-                        print("❌ Earth Engine not authenticated")
-                        print("   Please run: earthengine authenticate")
-                        return False
-                    raise
-                
-        except Exception as e:
-            print(f"✗ Earth Engine initialization failed: {e}")
-            print("\nPlease run: earthengine authenticate")
-            return False
-    
-    @classmethod
-    def get_dataset(cls, category: str, name: str) -> str:
-        """Get dataset ID by category and name"""
-        return cls.DATASETS.get(category, {}).get(name)
-    
-    @classmethod
-    def test_connection(cls):
-        """Test Earth Engine connection"""
-        try:
-            # Simple test query
-            point = ee.Geometry.Point([0, 0])
-            result = ee.Image('USGS/SRTMGL1_003').sample(point, 30).first()
-            result.getInfo()
+        """Initialize Earth Engine (local + Streamlit Cloud safe + interactive fallback)"""
+
+        # ✅ Fast check (no API call)
+        if ee.data._initialized:
             return True
+
+        try:
+            # ===== Streamlit Cloud =====
+            if "GEE_SERVICE_ACCOUNT_JSON" in st.secrets:
+                info = json.loads(st.secrets["GEE_SERVICE_ACCOUNT_JSON"])
+                credentials = ee.ServiceAccountCredentials(
+                    info["client_email"],
+                    key_data=st.secrets["GEE_SERVICE_ACCOUNT_JSON"]
+                )
+                ee.Initialize(credentials, project=st.secrets["GEE_PROJECT_ID"])
+                print("✓ EE initialized (Streamlit Cloud)")
+                return True
+
+            # ===== Local (.env + service account file) =====
+            service_key = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+            project_id = os.getenv("GEE_PROJECT_ID")
+
+            if service_key and os.path.exists(service_key):
+                credentials = ee.ServiceAccountCredentials(None, service_key)
+                ee.Initialize(credentials, project=project_id)
+                print("✓ EE initialized (local service account)")
+                return True
+
+            # ===== Fallback: interactive authentication =====
+            print("⚠️ No service account found. Attempting interactive authentication...")
+            ee.Authenticate()  # opens browser for user login
+            ee.Initialize()
+            print("✓ EE initialized (interactive user authentication)")
+            return True
+
         except Exception as e:
-            print(f"Connection test failed: {e}")
-            return False
+            raise RuntimeError(
+                "✗ Earth Engine initialization failed.\n"
+                "• Local: check GOOGLE_APPLICATION_CREDENTIALS\n"
+                "• Cloud: check st.secrets\n"
+                "• Interactive: browser login required\n\n"
+                f"Error: {e}"
+            )
