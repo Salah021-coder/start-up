@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/pages/results.py (ENHANCED WITH SUITABILITY MAP)
+# FILE: ui/pages/results.py (FIXED - Proper Map Centering)
 # ============================================================================
 
 import streamlit as st
@@ -145,16 +145,49 @@ def render_suitability_map(results):
     
     # Get data
     boundary = results.get('boundary', {})
-    centroid = boundary.get('centroid', [5.41, 36.19])
+    geojson = boundary.get('geojson', {})
     overall_score = results.get('overall_score', 5.0)
+    
+    # CRITICAL FIX: Extract centroid properly
+    centroid = boundary.get('centroid')
+    
+    # If centroid is a list [lon, lat], we need [lat, lon] for Folium
+    if centroid and isinstance(centroid, list) and len(centroid) == 2:
+        # Check if it's [lon, lat] format (likely from GeoJSON)
+        if -180 <= centroid[0] <= 180 and -90 <= centroid[1] <= 90:
+            # If first value is in lon range and second in lat range
+            if abs(centroid[0]) > abs(centroid[1]):
+                # Likely [lon, lat], need to swap
+                map_center = [centroid[1], centroid[0]]
+            else:
+                # Already [lat, lon]
+                map_center = centroid
+        else:
+            map_center = [36.19, 5.41]  # Default fallback
+    else:
+        # Try to extract from geometry
+        try:
+            if geojson and 'geometry' in geojson:
+                coords = geojson['geometry']['coordinates'][0]
+                # Calculate centroid from coordinates
+                lons = [c[0] for c in coords]
+                lats = [c[1] for c in coords]
+                map_center = [sum(lats)/len(lats), sum(lons)/len(lons)]
+            else:
+                map_center = [36.19, 5.41]  # Default
+        except:
+            map_center = [36.19, 5.41]  # Default fallback
+    
+    # Debug: Show what we're using
+    st.info(f"🗺️ Map centering on: Latitude {map_center[0]:.4f}, Longitude {map_center[1]:.4f}")
     
     # Determine suitability class
     suitability_class = classify_suitability(overall_score)
     
-    # Create map
+    # Create map with FIXED center
     m = folium.Map(
-        location=centroid,
-        zoom_start=15,
+        location=map_center,
+        zoom_start=16,  # Closer zoom
         tiles='OpenStreetMap'
     )
     
@@ -186,30 +219,51 @@ def render_suitability_map(results):
     fill_color = color_map.get(suitability_class['class'], '#FFD700')
     
     # Add boundary with suitability color
-    geojson = boundary.get('geojson', {})
     if geojson:
-        folium.GeoJson(
-            geojson,
-            style_function=lambda x: {
-                'fillColor': fill_color,
-                'color': fill_color,
-                'weight': 3,
-                'fillOpacity': 0.5
-            },
-            tooltip=folium.Tooltip(
-                f"""
-                <b>Land Suitability Analysis</b><br>
-                Class: {suitability_class['class']}<br>
-                Score: {overall_score:.1f}/10<br>
-                Rating: {suitability_class['rating']}
-                """,
-                sticky=True
-            )
-        ).add_to(m)
+        # CRITICAL FIX: Make sure we're using the geometry correctly
+        try:
+            folium.GeoJson(
+                geojson,
+                style_function=lambda x: {
+                    'fillColor': fill_color,
+                    'color': fill_color,
+                    'weight': 3,
+                    'fillOpacity': 0.5
+                },
+                tooltip=folium.Tooltip(
+                    f"""
+                    <b>Land Suitability Analysis</b><br>
+                    Class: {suitability_class['class']}<br>
+                    Score: {overall_score:.1f}/10<br>
+                    Rating: {suitability_class['rating']}
+                    """,
+                    sticky=True
+                )
+            ).add_to(m)
+            
+            # FIT BOUNDS TO GEOMETRY
+            # Extract bounds from geometry
+            if 'geometry' in geojson and 'coordinates' in geojson['geometry']:
+                coords = geojson['geometry']['coordinates'][0]
+                lons = [c[0] for c in coords]
+                lats = [c[1] for c in coords]
+                
+                # Set bounds to fit the geometry
+                bounds = [[min(lats), min(lons)], [max(lats), max(lons)]]
+                m.fit_bounds(bounds, padding=[50, 50])
+                
+        except Exception as e:
+            st.error(f"Error adding boundary to map: {e}")
+            # Add a marker at least
+            folium.Marker(
+                location=map_center,
+                popup=f"Analysis Location<br>Score: {overall_score:.1f}/10",
+                icon=folium.Icon(color='blue', icon='info-sign')
+            ).add_to(m)
     
     # Add center marker with info
     folium.Marker(
-        location=centroid,
+        location=map_center,
         popup=folium.Popup(
             f"""
             <div style='width: 250px; font-family: Arial;'>
@@ -237,26 +291,6 @@ def render_suitability_map(results):
         ),
         tooltip=f"Suitability: {suitability_class['class']}"
     ).add_to(m)
-    
-    # Add feature markers
-    features = results.get('features', {})
-    terrain = features.get('terrain', {})
-    infra = features.get('infrastructure', {})
-    
-    # Add slope indicator
-    slope_avg = terrain.get('slope_avg', 0)
-    if slope_avg > 0:
-        slope_color = 'green' if slope_avg < 8 else 'orange' if slope_avg < 15 else 'red'
-        folium.CircleMarker(
-            location=[centroid[0] + 0.001, centroid[1] - 0.001],
-            radius=8,
-            popup=f"Slope: {slope_avg:.1f}°",
-            color=slope_color,
-            fill=True,
-            fillColor=slope_color,
-            fillOpacity=0.7,
-            tooltip="Terrain Slope"
-        ).add_to(m)
     
     # Add layer control
     folium.LayerControl().add_to(m)
@@ -297,7 +331,7 @@ def render_suitability_map(results):
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
-def classify_suitability(score: float) -> Dict:
+def classify_suitability(score: float) -> dict:
     """Classify suitability based on score (5-class system)"""
     
     if score > 8.0:
