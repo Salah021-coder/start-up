@@ -8,7 +8,7 @@ from typing import Dict
 class GeminiConfig:
     """Gemini AI Configuration (Streamlit + Local)"""
 
-    MODEL_NAME = "gemini-2.5-pro"
+    MODEL_NAME = "gemini-2.5-flash"
 
     TEMPERATURE = 0.7
     MAX_OUTPUT_TOKENS = 2048
@@ -42,6 +42,7 @@ class GeminiConfig:
             "top_p": cls.TOP_P,
             "top_k": cls.TOP_K,
         }
+
 
 
 
