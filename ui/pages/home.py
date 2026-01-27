@@ -1,3 +1,7 @@
+# ============================================================================
+# FILE: ui/pages/home.py (ADD HEATMAP FEATURE)
+# ============================================================================
+
 import streamlit as st
 
 def render():
@@ -27,30 +31,76 @@ def render():
     # Features
     st.markdown("### How It Works")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         st.markdown("""
             #### 1️⃣ Define Area
-            - Draw boundaries on interactive map
-            - Or upload KML, GeoJSON, Shapefile
-            - Supports areas up to 100 km²
+            - Draw boundaries on map
+            - Upload KML, GeoJSON
+            - Up to 100 km²
         """)
     
     with col2:
         st.markdown("""
             #### 2️⃣ AI Analysis
-            - Automatic criteria selection
-            - Google Earth Engine data
-            - AHP + Machine Learning
+            - Auto criteria selection
+            - Earth Engine data
+            - AHP + ML models
         """)
     
     with col3:
         st.markdown("""
             #### 3️⃣ Get Results
             - Suitability scores
-            - Usage recommendations
-            - Downloadable reports
+            - 40+ recommendations
+            - Detailed insights
+        """)
+    
+    with col4:
+        st.markdown("""
+            #### 4️⃣ Heatmap 🆕
+            - **Find best spots**
+            - **Visual heatmap**
+            - **Top 5 locations**
+        """)
+    
+    st.markdown("---")
+    
+    # NEW: Heatmap Feature Highlight
+    st.markdown("### 🆕 New Feature: Suitability Heatmap")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("""
+        **Discover the best locations within your land!**
+        
+        Our new heatmap feature analyzes your entire property and shows you:
+        - 🎯 **Top 5 best locations** for your chosen development type
+        - 🗺️ **Visual heatmap** with color-coded suitability
+        - 📊 **Detailed scores** for every point analyzed
+        - 💡 **Smart recommendations** for optimal placement
+        
+        Perfect for:
+        - Finding the best spot for a house on large property
+        - Identifying optimal areas for commercial development
+        - Locating ideal zones for agricultural activities
+        - Discovering premium locations for luxury villas
+        """)
+    
+    with col2:
+        st.info("""
+        **How it works:**
+        
+        1. Define your area
+        2. Choose land use type
+        3. Set grid resolution
+        4. View heatmap
+        5. Get top locations!
+        
+        ⏱️ Takes 1-2 minutes
+        📍 Analyzes 20-200 points
         """)
     
     st.markdown("---")
@@ -90,6 +140,6 @@ def render():
         - ✅ Gentle slope (4.2°) ideal for construction
         - ✅ Excellent road access (450m)
         - ✅ All utilities available
+        - 🗺️ **Heatmap shows 3 premium zones for building**
         - ⚠️ Minor flood risk in 5% of area
         """)
-
