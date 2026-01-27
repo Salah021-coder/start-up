@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: core/analysis_processor.py (COMPLETE WITH ERROR HANDLING)
+# FILE: core/analysis_processor.py (ENHANCED VERSION)
 # ============================================================================
 
 from typing import Dict
@@ -9,12 +9,13 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 class AnalysisProcessor:
-    """Coordinate the overall analysis workflow"""
+    """Coordinate the overall analysis workflow with enhanced criteria"""
     
-    def __init__(self):
+    def __init__(self, use_real_osm: bool = True):
         self.ee_available = EarthEngineManager.is_available()
+        self.use_real_osm = use_real_osm
         
-        # Only import EE-dependent modules if available
+        # Initialize EE-dependent modules if available
         if self.ee_available:
             try:
                 from data.earth_engine.gee_client import GEEClient
@@ -28,13 +29,13 @@ class AnalysisProcessor:
                 print(f"Warning: Could not initialize EE extractors: {e}")
                 self.ee_available = False
         
-        # These don't require EE
+        # Initialize other modules
         from data.feature_extraction.infrastructure_features import InfrastructureFeatureExtractor
         from intelligence.ahp.ahp_solver import AHPSolver
         from intelligence.ml.models.suitability_predictor import SuitabilityPredictor
         from intelligence.recommendation.score_aggregator import ScoreAggregator
         
-        self.infra_extractor = InfrastructureFeatureExtractor()
+        self.infra_extractor = InfrastructureFeatureExtractor(use_real_osm=use_real_osm)
         self.ahp_solver = AHPSolver()
         self.ml_predictor = SuitabilityPredictor()
         self.score_aggregator = ScoreAggregator()
@@ -45,35 +46,49 @@ class AnalysisProcessor:
         criteria: Dict,
         progress_callback=None
     ) -> Dict:
-        """Run complete land evaluation analysis"""
+        """Run complete enhanced land evaluation analysis"""
         
         try:
-            logger.info("Starting land evaluation analysis")
+            logger.info("Starting enhanced land evaluation analysis")
             
             # Step 1: Extract features
             if progress_callback:
-                progress_callback("Extracting features from multiple sources...", 20)
+                progress_callback("Extracting features (this may take 30-60 seconds)...", 10)
             
             features = self._extract_all_features(boundary_data)
             
             if progress_callback:
-                progress_callback("Features extracted successfully", 40)
+                progress_callback("Features extracted successfully", 35)
             
-            # Step 2: Run AHP analysis
+            # Step 2: Auto-select and adjust criteria based on features
             if progress_callback:
-                progress_callback("Running AHP multi-criteria analysis...", 60)
+                progress_callback("Auto-selecting optimal criteria...", 40)
             
-            ahp_results = self.ahp_solver.solve(features, criteria)
+            from core.criteria_engine import CriteriaEngine
+            criteria_engine = CriteriaEngine()
             
-            # Step 3: Run ML predictions
+            # Get infrastructure features for criteria selection
+            infra_features = features.get('infrastructure', {})
+            adjusted_criteria = criteria_engine.auto_select_criteria(
+                boundary_data,
+                infra_features
+            )
+            
+            # Step 3: Run AHP analysis with enhanced criteria
             if progress_callback:
-                progress_callback("Running ML suitability predictions...", 80)
+                progress_callback("Running enhanced AHP multi-criteria analysis...", 55)
+            
+            ahp_results = self.ahp_solver.solve(features, adjusted_criteria['criteria'])
+            
+            # Step 4: Run ML predictions
+            if progress_callback:
+                progress_callback("Running ML suitability predictions...", 75)
             
             ml_results = self.ml_predictor.predict(features)
             
-            # Step 4: Aggregate scores
+            # Step 5: Aggregate scores
             if progress_callback:
-                progress_callback("Aggregating results...", 90)
+                progress_callback("Aggregating results and generating recommendations...", 90)
             
             final_scores = self.score_aggregator.aggregate(
                 ahp_results,
@@ -81,11 +96,11 @@ class AnalysisProcessor:
                 features
             )
             
-            # Step 5: Compile results
+            # Step 6: Compile results with enhanced insights
             results = self._compile_results(
                 boundary_data,
                 features,
-                criteria,
+                adjusted_criteria,
                 ahp_results,
                 ml_results,
                 final_scores
@@ -94,7 +109,7 @@ class AnalysisProcessor:
             if progress_callback:
                 progress_callback("Analysis complete!", 100)
             
-            logger.info("Analysis completed successfully")
+            logger.info("Enhanced analysis completed successfully")
             return results
             
         except Exception as e:
@@ -104,7 +119,7 @@ class AnalysisProcessor:
             raise
     
     def _extract_all_features(self, boundary_data: Dict) -> Dict:
-        """Extract features from all data sources"""
+        """Extract all features including enhanced infrastructure data"""
         
         ee_geometry = boundary_data.get('ee_geometry')
         shapely_geometry = boundary_data.get('geometry')
@@ -112,43 +127,265 @@ class AnalysisProcessor:
         
         features = {}
         
+        print("\n=== Feature Extraction Started ===")
+        
         # Extract terrain features (requires EE)
+        print("1/3: Extracting terrain features...")
         if self.ee_available and ee_geometry:
             try:
                 features['terrain'] = self.terrain_extractor.extract(ee_geometry)
+                print("✓ Terrain features extracted")
             except Exception as e:
-                print(f"Warning: Terrain extraction failed: {e}")
+                print(f"⚠ Terrain extraction failed: {e}")
                 features['terrain'] = self._get_default_terrain()
         else:
             features['terrain'] = self._get_default_terrain()
+            print("ℹ Using default terrain features (EE not available)")
         
         # Extract environmental features (requires EE)
+        print("2/3: Extracting environmental features...")
         if self.ee_available and ee_geometry:
             try:
                 features['environmental'] = self.env_extractor.extract(ee_geometry)
+                print("✓ Environmental features extracted")
             except Exception as e:
-                print(f"Warning: Environmental extraction failed: {e}")
+                print(f"⚠ Environmental extraction failed: {e}")
                 features['environmental'] = self._get_default_environmental()
         else:
             features['environmental'] = self._get_default_environmental()
+            print("ℹ Using default environmental features (EE not available)")
         
-        # Extract infrastructure features (doesn't require EE)
+        # Extract enhanced infrastructure features
+        print("3/3: Extracting enhanced infrastructure features...")
+        if self.use_real_osm:
+            print("   → Fetching real data from OpenStreetMap (may take 30-60s)...")
+        
         try:
             features['infrastructure'] = self.infra_extractor.extract(
                 ee_geometry=ee_geometry,
                 centroid=centroid,
                 geometry=shapely_geometry
             )
+            print(f"✓ Infrastructure features extracted (quality: {features['infrastructure'].get('data_quality')})")
         except Exception as e:
-            print(f"Warning: Infrastructure extraction failed: {e}")
+            print(f"⚠ Infrastructure extraction failed: {e}")
             features['infrastructure'] = self._get_default_infrastructure()
         
         features['boundary'] = boundary_data
         
+        print("=== Feature Extraction Complete ===\n")
+        
         return features
     
+    def _compile_results(
+        self,
+        boundary_data: Dict,
+        features: Dict,
+        criteria: Dict,
+        ahp_results: Dict,
+        ml_results: Dict,
+        final_scores: Dict
+    ) -> Dict:
+        """Compile all results with enhanced insights"""
+        
+        # Generate enhanced insights
+        enhanced_insights = self._generate_enhanced_insights(features, final_scores)
+        
+        return {
+            'analysis_id': self._generate_analysis_id(),
+            'timestamp': self._get_timestamp(),
+            'boundary': boundary_data,
+            'features': features,
+            'criteria': criteria,
+            'ahp_results': ahp_results,
+            'ml_results': ml_results,
+            'final_scores': final_scores,
+            'overall_score': final_scores['overall_score'],
+            'confidence_level': final_scores['confidence'],
+            'recommendations': final_scores['recommendations'],
+            'risk_assessment': final_scores['risk_assessment'],
+            'key_insights': enhanced_insights,
+            'data_sources': self._get_data_sources(features)
+        }
+    
+    def _generate_enhanced_insights(self, features: Dict, scores: Dict) -> Dict:
+        """Generate comprehensive insights from all features"""
+        insights = {
+            'strengths': [],
+            'concerns': [],
+            'opportunities': [],
+            'location_summary': '',
+            'accessibility_summary': '',
+            'development_potential': ''
+        }
+        
+        terrain = features.get('terrain', {})
+        env = features.get('environmental', {})
+        infra = features.get('infrastructure', {})
+        
+        # === STRENGTHS ===
+        
+        # Terrain strengths
+        if terrain.get('slope_avg', 999) < 5:
+            insights['strengths'].append(
+                f"Excellent terrain: Gentle slope ({terrain.get('slope_avg', 0):.1f}°) ideal for all types of construction"
+            )
+        
+        # Infrastructure strengths
+        road_dist = infra.get('nearest_road_distance', 999999)
+        if road_dist < 500:
+            road_type = infra.get('road_type', 'road')
+            insights['strengths'].append(
+                f"Superior accessibility: {road_type.title()} road only {road_dist:.0f}m away"
+            )
+        
+        # Urban proximity
+        urban_dist = infra.get('nearest_city_distance', 999999)
+        city_name = infra.get('city_name', 'city')
+        if urban_dist < 10000:
+            insights['strengths'].append(
+                f"Prime location: Only {urban_dist/1000:.1f}km from {city_name}"
+            )
+        
+        # Amenities
+        total_amenities = infra.get('total_amenities', 0)
+        if total_amenities > 30:
+            insights['strengths'].append(
+                f"Rich amenities: {total_amenities} services within 3km radius"
+            )
+        
+        # Public transport
+        transport_score = infra.get('public_transport_score', 0)
+        if transport_score > 7:
+            insights['strengths'].append(
+                f"Excellent public transport: Score {transport_score:.1f}/10"
+            )
+        
+        # Utilities
+        utilities_count = sum([
+            infra.get('electricity_grid', False),
+            infra.get('water_network', False),
+            infra.get('sewage_system', False),
+            infra.get('internet_fiber', False)
+        ])
+        if utilities_count >= 3:
+            insights['strengths'].append(
+                f"Complete infrastructure: {utilities_count}/4 major utilities available"
+            )
+        
+        # === CONCERNS ===
+        
+        # Terrain concerns
+        if terrain.get('slope_avg', 0) > 15:
+            insights['concerns'].append(
+                f"Steep terrain: {terrain.get('slope_avg', 0):.1f}° slope may increase construction costs by 20-40%"
+            )
+        
+        # Environmental concerns
+        flood_risk = env.get('flood_risk_percent', 0)
+        if flood_risk > 30:
+            insights['concerns'].append(
+                f"Significant flood risk: {flood_risk:.0f}% of area affected - consider drainage infrastructure"
+            )
+        elif flood_risk > 10:
+            insights['concerns'].append(
+                f"Moderate flood risk: {flood_risk:.0f}% of area - mitigation recommended"
+            )
+        
+        # Accessibility concerns
+        if road_dist > 2000:
+            insights['concerns'].append(
+                f"Limited road access: Nearest road {road_dist/1000:.1f}km away - consider access road development"
+            )
+        
+        # Isolation concerns
+        if total_amenities < 10:
+            insights['concerns'].append(
+                f"Limited services: Only {total_amenities} amenities nearby - residents will need to travel for services"
+            )
+        
+        # Urban distance
+        if urban_dist > 30000:
+            insights['concerns'].append(
+                f"Remote location: {urban_dist/1000:.0f}km from nearest city - limited market access"
+            )
+        
+        # === OPPORTUNITIES ===
+        
+        # Development pressure
+        dev_pressure = infra.get('development_pressure', 'low')
+        if dev_pressure == 'high':
+            insights['opportunities'].append(
+                "High development pressure: Area experiencing rapid growth - strong appreciation potential"
+            )
+        elif dev_pressure == 'medium':
+            insights['opportunities'].append(
+                "Growing area: Moderate development activity - good timing for investment"
+            )
+        
+        # Growth zone
+        if infra.get('growth_zone', False):
+            insights['opportunities'].append(
+                "Designated growth zone: Government planning may bring infrastructure improvements"
+            )
+        
+        # Top recommendation opportunity
+        top_rec = scores.get('recommendations', [{}])[0] if scores.get('recommendations') else {}
+        if top_rec.get('suitability_score', 0) > 8:
+            insights['opportunities'].append(
+                f"Exceptional suitability: {top_rec.get('usage_type', 'development').title()} development has {top_rec.get('suitability_score', 0):.1f}/10 score"
+            )
+        
+        # Market opportunities
+        urbanization = infra.get('urbanization_level', 'rural')
+        if urbanization == 'suburban':
+            insights['opportunities'].append(
+                "Suburban location: Ideal for residential development serving urban workers"
+            )
+        
+        # === SUMMARIES ===
+        
+        # Location summary
+        insights['location_summary'] = f"{city_name}, {urbanization} area with {dev_pressure} development pressure"
+        
+        # Accessibility summary
+        access_score = infra.get('accessibility_score', 5)
+        if access_score > 7:
+            access_level = "Excellent"
+        elif access_score > 5:
+            access_level = "Good"
+        else:
+            access_level = "Limited"
+        
+        insights['accessibility_summary'] = f"{access_level} accessibility (Score: {access_score:.1f}/10) - {road_dist:.0f}m to nearest road"
+        
+        # Development potential
+        overall_score = scores.get('overall_score', 5)
+        if overall_score > 8:
+            potential = "Exceptional development potential with minimal constraints"
+        elif overall_score > 6:
+            potential = "Strong development potential with manageable challenges"
+        elif overall_score > 4:
+            potential = "Moderate development potential - careful planning required"
+        else:
+            potential = "Limited development potential - significant constraints present"
+        
+        insights['development_potential'] = potential
+        
+        return insights
+    
+    def _get_data_sources(self, features: Dict) -> Dict:
+        """Document data sources used in analysis"""
+        sources = {
+            'terrain': 'Default values' if not self.ee_available else 'Google Earth Engine (SRTM)',
+            'environmental': 'Default values' if not self.ee_available else 'Google Earth Engine (Sentinel-2, ESA WorldCover)',
+            'infrastructure': features.get('infrastructure', {}).get('data_quality', 'unknown')
+        }
+        
+        return sources
+    
+    # Keep existing helper methods...
     def _get_default_terrain(self) -> Dict:
-        """Default terrain features"""
         return {
             'slope_avg': 5.0,
             'slope_min': 0.0,
@@ -165,7 +402,6 @@ class AnalysisProcessor:
         }
     
     def _get_default_environmental(self) -> Dict:
-        """Default environmental features"""
         return {
             'ndvi_avg': 0.5,
             'ndvi_min': 0.2,
@@ -182,57 +418,37 @@ class AnalysisProcessor:
         }
     
     def _get_default_infrastructure(self) -> Dict:
-        """Default infrastructure features"""
         return {
             'nearest_road_distance': 1000.0,
             'road_type': 'secondary',
-            'utilities_available': {
-                'water': True,
-                'electricity': True,
-                'gas': False,
-                'sewage': True,
-                'internet': True
-            },
-            'nearby_amenities': {
-                'schools': 1,
-                'hospitals': 1,
-                'shopping': 2,
-                'restaurants': 3,
-                'parks': 1
-            },
+            'motorway_distance': 15000.0,
+            'primary_road_distance': 3000.0,
+            'secondary_road_distance': 1000.0,
+            'road_density': 2.0,
+            'city_name': 'Unknown',
+            'nearest_city_distance': 15000.0,
+            'urbanization_level': 'suburban',
+            'population_density': 500,
+            'development_pressure': 'medium',
+            'growth_zone': False,
+            'bus_stop_distance': 1000.0,
+            'train_station_distance': 20000.0,
+            'public_transport_score': 5.0,
+            'schools_count_3km': 2,
+            'hospitals_count_5km': 1,
+            'total_amenities': 15,
+            'electricity_grid': True,
+            'water_network': True,
+            'sewage_system': True,
+            'gas_network': False,
+            'internet_fiber': True,
             'accessibility_score': 6.0,
             'infrastructure_score': 6.0,
+            'urban_development_score': 5.0,
             'data_quality': 'default'
         }
     
-    def _compile_results(
-        self,
-        boundary_data: Dict,
-        features: Dict,
-        criteria: Dict,
-        ahp_results: Dict,
-        ml_results: Dict,
-        final_scores: Dict
-    ) -> Dict:
-        """Compile all results into final output"""
-        return {
-            'analysis_id': self._generate_analysis_id(),
-            'timestamp': self._get_timestamp(),
-            'boundary': boundary_data,
-            'features': features,
-            'criteria': criteria,
-            'ahp_results': ahp_results,
-            'ml_results': ml_results,
-            'final_scores': final_scores,
-            'overall_score': final_scores['overall_score'],
-            'confidence_level': final_scores['confidence'],
-            'recommendations': final_scores['recommendations'],
-            'risk_assessment': final_scores['risk_assessment'],
-            'key_insights': self._generate_insights(features, final_scores)
-        }
-    
     def _generate_analysis_id(self) -> str:
-        """Generate unique analysis ID"""
         import uuid
         from datetime import datetime
         timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -240,58 +456,5 @@ class AnalysisProcessor:
         return f"LAND_{timestamp}_{unique_id}"
     
     def _get_timestamp(self) -> str:
-        """Get current timestamp"""
         from datetime import datetime
         return datetime.now().isoformat()
-    
-    def _generate_insights(self, features: Dict, scores: Dict) -> Dict:
-        """Generate key insights from analysis"""
-        insights = {
-            'strengths': [],
-            'concerns': [],
-            'opportunities': []
-        }
-        
-        # Analyze terrain
-        terrain = features.get('terrain', {})
-        if terrain.get('slope_avg', 999) < 5:
-            insights['strengths'].append(
-                f"Gentle slope ({terrain.get('slope_avg', 0):.1f}°) ideal for construction"
-            )
-        elif terrain.get('slope_avg', 0) > 15:
-            insights['concerns'].append(
-                f"Steep slope ({terrain.get('slope_avg', 0):.1f}°) may increase development costs"
-            )
-        
-        # Analyze infrastructure
-        infra = features.get('infrastructure', {})
-        road_dist = infra.get('nearest_road_distance', 999999)
-        if road_dist < 500:
-            insights['strengths'].append(
-                f"Excellent road access (only {road_dist:.0f}m away)"
-            )
-        elif road_dist > 2000:
-            insights['concerns'].append(
-                f"Limited road access ({road_dist/1000:.1f}km to nearest road)"
-            )
-        
-        # Analyze environmental factors
-        env = features.get('environmental', {})
-        flood_risk = env.get('flood_risk_percent', 0)
-        if flood_risk > 30:
-            insights['concerns'].append(
-                f"High flood risk in {flood_risk:.0f}% of area"
-            )
-        elif flood_risk < 10:
-            insights['strengths'].append(
-                "Low flood risk throughout the property"
-            )
-        
-        # Add opportunities based on scores
-        top_rec = scores.get('recommendations', [{}])[0] if scores.get('recommendations') else {}
-        if top_rec.get('suitability_score', 0) > 8:
-            insights['opportunities'].append(
-                f"Excellent potential for {top_rec.get('usage_type', 'development')}"
-            )
-        
-        return insights
