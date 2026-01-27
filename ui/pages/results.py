@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/pages/results.py (COMPLETE WITH ANALYSIS MAP)
+# FILE: ui/pages/results.py (ENHANCED VERSION WITH NEW CRITERIA)
 # ============================================================================
 
 import streamlit as st
@@ -10,8 +10,9 @@ from streamlit_folium import st_folium
 from folium.plugins import HeatMap
 import numpy as np
 
+
 def render():
-    """Render results page with analysis visualization map"""
+    """Render enhanced results page with new criteria"""
     
     if not st.session_state.get('analysis_results'):
         st.warning("No analysis results available. Please run an analysis first.")
@@ -23,17 +24,68 @@ def render():
     results = st.session_state.analysis_results
     
     # Header
-    st.title("📊 Analysis Results")
+    st.title("📊 Enhanced Analysis Results")
     st.markdown(f"**Analysis ID:** {results.get('analysis_id')}")
     
+    # Data quality indicator
+    data_sources = results.get('data_sources', {})
+    infra_quality = data_sources.get('infrastructure', 'unknown')
+    
+    if infra_quality == 'real_osm':
+        st.success("✅ Analysis uses real OpenStreetMap data for infrastructure")
+    else:
+        st.info("ℹ️ Analysis uses estimated data for infrastructure")
+    
     # Summary metrics
-    st.markdown("### Summary")
+    render_summary_metrics(results)
+    
+    st.markdown("---")
+    
+    # Location and accessibility summary
+    render_location_summary(results)
+    
+    st.markdown("---")
+    
+    # Analysis map
+    render_analysis_map(results)
+    
+    st.markdown("---")
+    
+    # Recommendations
+    render_recommendations(results)
+    
+    st.markdown("---")
+    
+    # Enhanced insights
+    render_enhanced_insights(results)
+    
+    st.markdown("---")
+    
+    # Detailed criteria breakdown
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        render_criteria_scores(results)
+    
+    with col2:
+        render_infrastructure_details(results)
+    
+    st.markdown("---")
+    
+    # Export options
+    render_export_options(results)
+
+
+def render_summary_metrics(results):
+    """Render summary metrics"""
+    st.markdown("### 📈 Summary Metrics")
+    
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
         score = results.get('overall_score', 0)
-        st.metric("Overall Score", f"{score:.1f}/10", 
-                 delta=f"{(score-5):.1f}" if score > 5 else None)
+        delta = f"+{(score-5):.1f}" if score > 5 else f"{(score-5):.1f}"
+        st.metric("Overall Score", f"{score:.1f}/10", delta=delta)
     
     with col2:
         confidence = results.get('confidence_level', 0) * 100
@@ -46,204 +98,131 @@ def render():
     with col4:
         area = results.get('boundary', {}).get('area_hectares', 0)
         st.metric("Area", f"{area:.2f} ha")
+
+
+def render_location_summary(results):
+    """Render location and accessibility summary"""
+    st.markdown("### 📍 Location Analysis")
     
-    st.markdown("---")
+    insights = results.get('key_insights', {})
+    features = results.get('features', {})
+    infra = features.get('infrastructure', {})
     
-    # ==========================================
-    # ANALYSIS MAP - MAIN VISUALIZATION
-    # ==========================================
-    render_analysis_map(results)
+    col1, col2, col3 = st.columns(3)
     
-    st.markdown("---")
+    with col1:
+        st.markdown("**Location**")
+        city = infra.get('city_name', 'Unknown')
+        urban_level = infra.get('urbanization_level', 'unknown')
+        st.info(f"📍 {city}\n\n🏘️ {urban_level.title()} area")
     
-    # Recommendations
-    render_recommendations(results)
+    with col2:
+        st.markdown("**Accessibility**")
+        access_score = infra.get('accessibility_score', 0)
+        road_dist = infra.get('nearest_road_distance', 0)
+        st.info(f"🚗 Score: {access_score:.1f}/10\n\n🛣️ Road: {road_dist:.0f}m")
     
-    st.markdown("---")
+    with col3:
+        st.markdown("**Development**")
+        dev_pressure = infra.get('development_pressure', 'unknown')
+        pop_density = infra.get('population_density', 0)
+        st.info(f"📊 {dev_pressure.title()} pressure\n\n👥 {pop_density:.0f} people/km²")
     
-    # Detailed scores
+    # Full summaries
+    st.markdown("**Quick Summary:**")
+    st.write(insights.get('development_potential', 'Analysis complete'))
+
+
+def render_infrastructure_details(results):
+    """Render detailed infrastructure breakdown"""
+    st.markdown("### 🏗️ Infrastructure Details")
+    
+    features = results.get('features', {})
+    infra = features.get('infrastructure', {})
+    
+    # Transportation
+    with st.expander("🚗 Transportation", expanded=True):
+        st.markdown(f"""
+        - **Nearest Road:** {infra.get('nearest_road_distance', 0):.0f}m ({infra.get('road_type', 'unknown')})
+        - **Primary Road:** {infra.get('primary_road_distance', 0)/1000:.1f}km
+        - **Motorway:** {infra.get('motorway_distance', 0)/1000:.1f}km
+        - **Road Density:** {infra.get('road_density', 0):.1f} km/km²
+        """)
+    
+    # Public Transport
+    with st.expander("🚌 Public Transport"):
+        st.markdown(f"""
+        - **Bus Stop:** {infra.get('bus_stop_distance', 0):.0f}m
+        - **Train Station:** {infra.get('train_station_distance', 0)/1000:.1f}km
+        - **Transport Score:** {infra.get('public_transport_score', 0):.1f}/10
+        """)
+    
+    # Amenities
+    with st.expander("🏪 Amenities"):
+        st.markdown(f"""
+        **Education:**
+        - Schools (3km): {infra.get('schools_count_3km', 0)}
+        
+        **Healthcare:**
+        - Hospitals (5km): {infra.get('hospitals_count_5km', 0)}
+        - Clinics (2km): {infra.get('clinics_count_2km', 0)}
+        
+        **Shopping:**
+        - Supermarkets (2km): {infra.get('supermarkets_count_2km', 0)}
+        - Restaurants (1km): {infra.get('restaurants_count_1km', 0)}
+        
+        **Total Amenities:** {infra.get('total_amenities', 0)}
+        """)
+    
+    # Utilities
+    with st.expander("⚡ Utilities"):
+        utilities = {
+            'Electricity': infra.get('electricity_grid', False),
+            'Water': infra.get('water_network', False),
+            'Sewage': infra.get('sewage_system', False),
+            'Gas': infra.get('gas_network', False),
+            'Internet': infra.get('internet_fiber', False)
+        }
+        
+        for utility, available in utilities.items():
+            status = "✅" if available else "❌"
+            st.markdown(f"- {status} {utility}")
+
+
+def render_enhanced_insights(results):
+    """Render comprehensive insights"""
+    st.markdown("### 💡 Detailed Insights")
+    
+    insights = results.get('key_insights', {})
+    
     col1, col2 = st.columns(2)
     
     with col1:
-        render_criteria_scores(results)
+        # Strengths
+        strengths = insights.get('strengths', [])
+        if strengths:
+            st.markdown("**✅ Key Strengths:**")
+            for strength in strengths:
+                st.success(strength)
+        
+        # Opportunities
+        opportunities = insights.get('opportunities', [])
+        if opportunities:
+            st.markdown("**💡 Opportunities:**")
+            for opp in opportunities:
+                st.info(opp)
     
     with col2:
-        render_insights(results)
-    
-    st.markdown("---")
-    
-    # Export options
-    render_export_options(results)
+        # Concerns
+        concerns = insights.get('concerns', [])
+        if concerns:
+            st.markdown("**⚠️ Considerations:**")
+            for concern in concerns:
+                st.warning(concern)
 
 
-def render_analysis_map(results):
-    """
-    Render the main analysis visualization map
-    Shows the analyzed land with color-coded suitability
-    """
-    st.markdown("### 🗺️ Land Analysis Visualization")
-    
-    boundary_data = results.get('boundary', {})
-    features = results.get('features', {})
-    overall_score = results.get('overall_score', 5)
-    
-    # Create map centered on the analyzed area
-    centroid = boundary_data.get('centroid', [5.41, 36.19])
-    
-    m = folium.Map(
-        location=[centroid[1], centroid[0]],  # [lat, lon]
-        zoom_start=14,
-        tiles='OpenStreetMap'
-    )
-    
-    # Add satellite layer
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri',
-        name='Satellite View',
-        overlay=False,
-        control=True
-    ).add_to(m)
-    
-    # Determine color based on suitability score
-    def get_suitability_color(score):
-        """Get color based on suitability score"""
-        if score >= 8:
-            return '#00ff00'  # Green - Excellent
-        elif score >= 6:
-            return '#90ee90'  # Light Green - Good
-        elif score >= 4:
-            return '#ffff00'  # Yellow - Moderate
-        elif score >= 2:
-            return '#ff8c00'  # Orange - Poor
-        else:
-            return '#ff0000'  # Red - Unsuitable
-    
-    color = get_suitability_color(overall_score)
-    
-    # Add the analyzed boundary with color coding
-    folium.GeoJson(
-        boundary_data.get('geojson'),
-        name='Analyzed Area',
-        style_function=lambda x: {
-            'fillColor': color,
-            'color': '#000000',
-            'weight': 3,
-            'fillOpacity': 0.4,
-            'opacity': 1
-        },
-        tooltip=f"Score: {overall_score:.1f}/10"
-    ).add_to(m)
-    
-    # Add markers for key features
-    add_feature_markers(m, centroid, features, results)
-    
-    # Add legend
-    add_suitability_legend(m)
-    
-    # Add layer control
-    folium.LayerControl().add_to(m)
-    
-    # Display the map
-    st_folium(m, width=800, height=500, returned_objects=[])
-    
-    # Map interpretation
-    st.markdown("**Map Legend:**")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.markdown("🟢 **Green**: Excellent (8-10)")
-        st.markdown("🟡 **Yellow**: Moderate (4-6)")
-    with col2:
-        st.markdown("🟢 **Light Green**: Good (6-8)")
-        st.markdown("🟠 **Orange**: Poor (2-4)")
-    with col3:
-        st.markdown("🔴 **Red**: Unsuitable (0-2)")
-
-
-def add_feature_markers(m, centroid, features, results):
-    """Add markers showing key features and insights"""
-    
-    terrain = features.get('terrain', {})
-    env = features.get('environmental', {})
-    infra = features.get('infrastructure', {})
-    
-    # Center marker with summary
-    folium.Marker(
-        location=[centroid[1], centroid[0]],
-        popup=folium.Popup(f"""
-            <div style='width: 200px'>
-                <h4>Analysis Summary</h4>
-                <b>Overall Score:</b> {results.get('overall_score', 0):.1f}/10<br>
-                <b>Top Use:</b> {results.get('recommendations', [{}])[0].get('usage_type', 'N/A')}<br>
-                <b>Confidence:</b> {results.get('confidence_level', 0)*100:.0f}%
-            </div>
-        """, max_width=300),
-        icon=folium.Icon(color='blue', icon='info-sign'),
-        tooltip="Click for summary"
-    ).add_to(m)
-    
-    # Terrain info marker
-    if terrain:
-        offset_lat = centroid[1] + 0.002
-        folium.Marker(
-            location=[offset_lat, centroid[0]],
-            popup=f"""
-                <b>Terrain Features:</b><br>
-                Slope: {terrain.get('slope_avg', 0):.1f}°<br>
-                Elevation: {terrain.get('elevation_avg', 0):.0f}m<br>
-                Buildability: {terrain.get('buildability_score', 0):.1f}/10
-            """,
-            icon=folium.Icon(color='green', icon='triangle-top', prefix='fa'),
-            tooltip="Terrain Data"
-        ).add_to(m)
-    
-    # Environmental marker
-    if env:
-        offset_lon = centroid[0] + 0.002
-        folium.Marker(
-            location=[centroid[1], offset_lon],
-            popup=f"""
-                <b>Environmental:</b><br>
-                NDVI: {env.get('ndvi_avg', 0):.2f}<br>
-                Flood Risk: {env.get('flood_risk_level', 'N/A')}<br>
-                Env Score: {env.get('environmental_score', 0):.1f}/10
-            """,
-            icon=folium.Icon(color='lightgreen', icon='leaf'),
-            tooltip="Environment Data"
-        ).add_to(m)
-    
-    # Risk marker (if high risk)
-    if results.get('risk_assessment', {}).get('level') == 'high':
-        offset_lat = centroid[1] - 0.002
-        folium.Marker(
-            location=[offset_lat, centroid[0]],
-            popup=f"""
-                <b>⚠️ Risk Factors:</b><br>
-                Level: High<br>
-                See insights for details
-            """,
-            icon=folium.Icon(color='red', icon='warning', prefix='fa'),
-            tooltip="Risk Warning"
-        ).add_to(m)
-
-
-def add_suitability_legend(m):
-    """Add a color legend to the map"""
-    legend_html = '''
-    <div style="position: fixed; 
-                bottom: 50px; right: 50px; width: 180px; height: 180px; 
-                background-color: white; border:2px solid grey; z-index:9999; 
-                font-size:14px; padding: 10px">
-        <p style="margin-bottom: 5px;"><b>Suitability Scale</b></p>
-        <p style="margin: 3px;"><span style="background-color: #00ff00; padding: 3px 10px;">■</span> Excellent (8-10)</p>
-        <p style="margin: 3px;"><span style="background-color: #90ee90; padding: 3px 10px;">■</span> Good (6-8)</p>
-        <p style="margin: 3px;"><span style="background-color: #ffff00; padding: 3px 10px;">■</span> Moderate (4-6)</p>
-        <p style="margin: 3px;"><span style="background-color: #ff8c00; padding: 3px 10px;">■</span> Poor (2-4)</p>
-        <p style="margin: 3px;"><span style="background-color: #ff0000; padding: 3px 10px;">■</span> Unsuitable (0-2)</p>
-    </div>
-    '''
-    m.get_root().html.add_child(folium.Element(legend_html))
-
+# Keep existing functions: render_analysis_map, render_recommendations, 
+# render_criteria_scores, render_export_options
 
 def render_recommendations(results):
     """Render recommendations section"""
@@ -392,4 +371,5 @@ def render_export_options(results):
                 data=geojson_str,
                 file_name="boundary.geojson",
                 mime="application/json"
+
             )
