@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/pages/results.py (ENHANCED VERSION WITH NEW CRITERIA)
+# FILE: ui/pages/results.py (COMPLETE VERSION WITH ALL FUNCTIONS)
 # ============================================================================
 
 import streamlit as st
@@ -133,6 +133,47 @@ def render_location_summary(results):
     st.write(insights.get('development_potential', 'Analysis complete'))
 
 
+def render_analysis_map(results):
+    """Render map showing the analyzed boundary"""
+    st.markdown("### 🗺️ Analysis Area")
+    
+    boundary = results.get('boundary', {})
+    centroid = boundary.get('centroid', [5.41, 36.19])
+    
+    # Create map
+    m = folium.Map(
+        location=centroid,
+        zoom_start=14
+    )
+    
+    # Add satellite layer
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Satellite',
+        overlay=False
+    ).add_to(m)
+    
+    # Add boundary
+    geojson = boundary.get('geojson', {})
+    if geojson:
+        folium.GeoJson(
+            geojson,
+            style_function=lambda x: {
+                'fillColor': 'blue',
+                'color': 'blue',
+                'weight': 2,
+                'fillOpacity': 0.3
+            }
+        ).add_to(m)
+    
+    # Layer control
+    folium.LayerControl().add_to(m)
+    
+    # Display map
+    st_folium(m, width=800, height=400)
+
+
 def render_infrastructure_details(results):
     """Render detailed infrastructure breakdown"""
     st.markdown("### 🏗️ Infrastructure Details")
@@ -221,9 +262,6 @@ def render_enhanced_insights(results):
                 st.warning(concern)
 
 
-# Keep existing functions: render_analysis_map, render_recommendations, 
-# render_criteria_scores, render_export_options
-
 def render_recommendations(results):
     """Render recommendations section"""
     st.markdown("### 🎯 Usage Recommendations")
@@ -300,31 +338,6 @@ def render_criteria_scores(results):
     st.plotly_chart(fig, use_container_width=True)
 
 
-def render_insights(results):
-    """Render key insights"""
-    st.markdown("### 💡 Key Insights")
-    
-    insights = results.get('key_insights', {})
-    
-    strengths = insights.get('strengths', [])
-    if strengths:
-        st.markdown("**Strengths:**")
-        for strength in strengths:
-            st.success(f"✅ {strength}")
-    
-    concerns = insights.get('concerns', [])
-    if concerns:
-        st.markdown("**Concerns:**")
-        for concern in concerns:
-            st.warning(f"⚠️ {concern}")
-    
-    opportunities = insights.get('opportunities', [])
-    if opportunities:
-        st.markdown("**Opportunities:**")
-        for opp in opportunities:
-            st.info(f"💡 {opp}")
-
-
 def render_export_options(results):
     """Render export options"""
     st.markdown("### 📥 Export Results")
@@ -371,5 +384,4 @@ def render_export_options(results):
                 data=geojson_str,
                 file_name="boundary.geojson",
                 mime="application/json"
-
             )
