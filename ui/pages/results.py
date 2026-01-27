@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/pages/results.py (COMPLETE VERSION WITH ALL FUNCTIONS)
+# FILE: ui/pages/results.py (ENHANCED WITH SUITABILITY MAP)
 # ============================================================================
 
 import streamlit as st
@@ -9,10 +9,11 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap
 import numpy as np
+import pandas as pd
 
 
 def render():
-    """Render enhanced results page with new criteria"""
+    """Render enhanced results page with suitability map"""
     
     if not st.session_state.get('analysis_results'):
         st.warning("No analysis results available. Please run an analysis first.")
@@ -46,8 +47,8 @@ def render():
     
     st.markdown("---")
     
-    # Analysis map
-    render_analysis_map(results)
+    # ENHANCED: Suitability map with 5 classes
+    render_suitability_map(results)
     
     st.markdown("---")
     
@@ -133,17 +134,28 @@ def render_location_summary(results):
     st.write(insights.get('development_potential', 'Analysis complete'))
 
 
-def render_analysis_map(results):
-    """Render map showing the analyzed boundary"""
-    st.markdown("### 🗺️ Analysis Area")
+def render_suitability_map(results):
+    """Render interactive suitability map with 5-class classification"""
+    st.markdown("### 🗺️ Land Suitability Map")
     
+    st.markdown("""
+    This map shows the overall suitability classification of your land based on comprehensive analysis.
+    The classification uses a weighted overlay of all factors to determine the best use potential.
+    """)
+    
+    # Get data
     boundary = results.get('boundary', {})
     centroid = boundary.get('centroid', [5.41, 36.19])
+    overall_score = results.get('overall_score', 5.0)
+    
+    # Determine suitability class
+    suitability_class = classify_suitability(overall_score)
     
     # Create map
     m = folium.Map(
         location=centroid,
-        zoom_start=14
+        zoom_start=15,
+        tiles='OpenStreetMap'
     )
     
     # Add satellite layer
@@ -154,24 +166,175 @@ def render_analysis_map(results):
         overlay=False
     ).add_to(m)
     
-    # Add boundary
+    # Add terrain layer
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Terrain',
+        overlay=False
+    ).add_to(m)
+    
+    # Get color based on suitability
+    color_map = {
+        'Very High': '#006400',  # Dark green
+        'High': '#32CD32',       # Lime green
+        'Moderate': '#FFD700',   # Gold
+        'Low': '#FF8C00',        # Dark orange
+        'Very Low': '#DC143C'    # Crimson
+    }
+    
+    fill_color = color_map.get(suitability_class['class'], '#FFD700')
+    
+    # Add boundary with suitability color
     geojson = boundary.get('geojson', {})
     if geojson:
         folium.GeoJson(
             geojson,
             style_function=lambda x: {
-                'fillColor': 'blue',
-                'color': 'blue',
-                'weight': 2,
-                'fillOpacity': 0.3
-            }
+                'fillColor': fill_color,
+                'color': fill_color,
+                'weight': 3,
+                'fillOpacity': 0.5
+            },
+            tooltip=folium.Tooltip(
+                f"""
+                <b>Land Suitability Analysis</b><br>
+                Class: {suitability_class['class']}<br>
+                Score: {overall_score:.1f}/10<br>
+                Rating: {suitability_class['rating']}
+                """,
+                sticky=True
+            )
         ).add_to(m)
     
-    # Layer control
+    # Add center marker with info
+    folium.Marker(
+        location=centroid,
+        popup=folium.Popup(
+            f"""
+            <div style='width: 250px; font-family: Arial;'>
+                <h3 style='color: {fill_color}; margin: 0;'>
+                    {suitability_class['class']} Suitability
+                </h3>
+                <hr style='margin: 5px 0;'>
+                <p style='margin: 5px 0;'>
+                    <b>Overall Score:</b> {overall_score:.1f}/10<br>
+                    <b>Rating:</b> {suitability_class['rating']}<br>
+                    <b>Area:</b> {boundary.get('area_hectares', 0):.2f} ha
+                </p>
+                <hr style='margin: 5px 0;'>
+                <p style='margin: 5px 0; font-size: 11px;'>
+                    {suitability_class['description']}
+                </p>
+            </div>
+            """,
+            max_width=300
+        ),
+        icon=folium.Icon(
+            color='green' if overall_score >= 7 else 'orange' if overall_score >= 5 else 'red',
+            icon='star',
+            prefix='fa'
+        ),
+        tooltip=f"Suitability: {suitability_class['class']}"
+    ).add_to(m)
+    
+    # Add feature markers
+    features = results.get('features', {})
+    terrain = features.get('terrain', {})
+    infra = features.get('infrastructure', {})
+    
+    # Add slope indicator
+    slope_avg = terrain.get('slope_avg', 0)
+    if slope_avg > 0:
+        slope_color = 'green' if slope_avg < 8 else 'orange' if slope_avg < 15 else 'red'
+        folium.CircleMarker(
+            location=[centroid[0] + 0.001, centroid[1] - 0.001],
+            radius=8,
+            popup=f"Slope: {slope_avg:.1f}°",
+            color=slope_color,
+            fill=True,
+            fillColor=slope_color,
+            fillOpacity=0.7,
+            tooltip="Terrain Slope"
+        ).add_to(m)
+    
+    # Add layer control
     folium.LayerControl().add_to(m)
     
     # Display map
-    st_folium(m, width=800, height=400)
+    st_folium(m, width=800, height=500)
+    
+    # Display suitability classification
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown(f"""
+        <div style='text-align: center; padding: 20px; background-color: {fill_color}; 
+                    border-radius: 10px; color: white; margin: 10px 0;'>
+            <h2 style='margin: 0; color: white;'>{suitability_class['class']} Suitability</h2>
+            <p style='margin: 5px 0; font-size: 18px;'>{suitability_class['rating']}</p>
+            <p style='margin: 5px 0; font-size: 14px;'>{suitability_class['description']}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Suitability legend
+    st.markdown("### 📊 Suitability Classification Legend")
+    
+    legend_data = {
+        'Class': ['Very High', 'High', 'Moderate', 'Low', 'Very Low'],
+        'Score Range': ['8.1 - 10.0', '6.1 - 8.0', '4.1 - 6.0', '2.1 - 4.0', '0.0 - 2.0'],
+        'Color': ['🟢', '🟢', '🟡', '🟠', '🔴'],
+        'Interpretation': [
+            'Excellent conditions - Highly recommended',
+            'Good conditions - Recommended with minor considerations',
+            'Fair conditions - Suitable with some limitations',
+            'Poor conditions - Major limitations present',
+            'Very poor conditions - Not recommended'
+        ]
+    }
+    
+    df = pd.DataFrame(legend_data)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+def classify_suitability(score: float) -> Dict:
+    """Classify suitability based on score (5-class system)"""
+    
+    if score > 8.0:
+        return {
+            'class': 'Very High',
+            'rating': '⭐⭐⭐⭐⭐',
+            'description': 'Excellent land with minimal constraints. Highly suitable for development.',
+            'recommendation': 'Proceed with confidence'
+        }
+    elif score > 6.0:
+        return {
+            'class': 'High',
+            'rating': '⭐⭐⭐⭐',
+            'description': 'Good land with minor limitations. Suitable for most development types.',
+            'recommendation': 'Recommended with standard precautions'
+        }
+    elif score > 4.0:
+        return {
+            'class': 'Moderate',
+            'rating': '⭐⭐⭐',
+            'description': 'Fair land with some constraints. Suitable with careful planning.',
+            'recommendation': 'Feasible with additional considerations'
+        }
+    elif score > 2.0:
+        return {
+            'class': 'Low',
+            'rating': '⭐⭐',
+            'description': 'Poor land with significant limitations. Development will be challenging.',
+            'recommendation': 'Requires major mitigation measures'
+        }
+    else:
+        return {
+            'class': 'Very Low',
+            'rating': '⭐',
+            'description': 'Very poor land with severe constraints. Not recommended for development.',
+            'recommendation': 'Consider alternative locations'
+        }
 
 
 def render_infrastructure_details(results):
