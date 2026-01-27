@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/pages/heatmap.py (NEW FILE)
+# FILE: ui/pages/heatmap.py (CORRECTED IMPORT)
 # ============================================================================
 
 import streamlit as st
@@ -86,6 +86,7 @@ def run_heatmap_analysis(boundary_data, land_use_type, grid_size, max_points):
     
     with st.spinner("🔍 Analyzing suitability across your land... This may take 1-2 minutes..."):
         try:
+            # CORRECTED IMPORT PATH
             from intelligence.spatial.suitability_grid import SuitabilityGridAnalyzer
             
             # Create analyzer
@@ -105,10 +106,22 @@ def run_heatmap_analysis(boundary_data, land_use_type, grid_size, max_points):
             st.balloons()
             st.rerun()
             
+        except ImportError as e:
+            st.error(f"❌ Import Error: {str(e)}")
+            st.info("""
+            **Module not found.** Please ensure the file exists at:
+            `intelligence/spatial/suitability_grid.py`
+            
+            Check that:
+            1. The file exists in the correct location
+            2. The `intelligence` folder has an `__init__.py` file
+            3. The `intelligence/spatial` folder has an `__init__.py` file
+            """)
         except Exception as e:
             st.error(f"❌ Analysis failed: {str(e)}")
             import traceback
-            traceback.print_exc()
+            with st.expander("Show Error Details"):
+                st.code(traceback.format_exc())
 
 
 def render_heatmap_results(results):
