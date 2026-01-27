@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 # Page configuration
 st.set_page_config(
-    page_title="Land Evaluation AI",
+    page_title="LandSense",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -124,3 +124,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
