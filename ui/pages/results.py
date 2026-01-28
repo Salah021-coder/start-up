@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/pages/results.py (FIXED - Proper Map Centering)
+# FILE: ui/pages/results.py (UPDATED WITH COMPREHENSIVE RISK DISPLAY)
 # ============================================================================
 
 import streamlit as st
@@ -9,11 +9,10 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap
 import numpy as np
-import pandas as pd
 
 
 def render():
-    """Render enhanced results page with suitability map"""
+    """Render enhanced results page with comprehensive risk assessment"""
     
     if not st.session_state.get('analysis_results'):
         st.warning("No analysis results available. Please run an analysis first.")
@@ -31,14 +30,28 @@ def render():
     # Data quality indicator
     data_sources = results.get('data_sources', {})
     infra_quality = data_sources.get('infrastructure', 'unknown')
+    risk_quality = data_sources.get('risk_assessment', 'unknown')
     
-    if infra_quality == 'real_osm':
-        st.success("✅ Analysis uses real OpenStreetMap data for infrastructure")
-    else:
-        st.info("ℹ️ Analysis uses estimated data for infrastructure")
+    col1, col2 = st.columns(2)
+    with col1:
+        if infra_quality == 'real_osm':
+            st.success("✅ Real OpenStreetMap data used for infrastructure")
+        else:
+            st.info("ℹ️ Estimated data used for infrastructure")
+    
+    with col2:
+        if 'Comprehensive' in risk_quality:
+            st.success("✅ Comprehensive risk assessment (7 risk types)")
+        else:
+            st.info("ℹ️ Basic risk assessment (flood only)")
     
     # Summary metrics
     render_summary_metrics(results)
+    
+    st.markdown("---")
+    
+    # === NEW: COMPREHENSIVE RISK ASSESSMENT SECTION ===
+    render_comprehensive_risk_section(results)
     
     st.markdown("---")
     
@@ -47,8 +60,8 @@ def render():
     
     st.markdown("---")
     
-    # ENHANCED: Suitability map with 5 classes
-    render_suitability_map(results)
+    # Analysis map
+    render_analysis_map(results)
     
     st.markdown("---")
     
@@ -75,6 +88,271 @@ def render():
     
     # Export options
     render_export_options(results)
+
+
+def render_comprehensive_risk_section(results: Dict):
+    """
+    NEW SECTION: Display comprehensive risk assessment prominently
+    """
+    features = results.get('features', {})
+    env = features.get('environmental', {})
+    comprehensive_risks = env.get('comprehensive_risks', {})
+    
+    if not comprehensive_risks:
+        st.info("ℹ️ Basic risk assessment performed. Comprehensive risk assessment requires Google Earth Engine.")
+        return
+    
+    st.markdown("## 🛡️ Comprehensive Risk Assessment")
+    
+    # Overall risk profile
+    overall_risk = comprehensive_risks.get('overall', {})
+    
+    with st.expander("📊 Overall Risk Profile", expanded=True):
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            level = overall_risk.get('level', 'unknown')
+            color = _get_risk_color(level)
+            st.markdown(f"""
+            <div style='background-color:{color};padding:20px;border-radius:10px;text-align:center;'>
+                <h2 style='color:white;margin:0;'>{level.replace('_', ' ').title()}</h2>
+                <p style='color:white;margin:5px 0 0 0;'>Overall Risk</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.metric(
+                "Average Severity", 
+                f"{overall_risk.get('average_severity', 0):.1f}/5",
+                help="Average severity across all risk types"
+            )
+        
+        with col3:
+            high_count = overall_risk.get('high_risk_count', 0)
+            st.metric(
+                "High Risks", 
+                high_count,
+                delta="Critical" if high_count > 0 else "None"
+            )
+        
+        with col4:
+            medium_count = overall_risk.get('medium_risk_count', 0)
+            st.metric(
+                "Medium Risks", 
+                medium_count
+            )
+        
+        # Summary text
+        summary = comprehensive_risks.get('summary', [])
+        if summary:
+            st.markdown("**Summary:**")
+            for line in summary:
+                st.markdown(line)
+    
+    # Quick risk overview cards
+    st.markdown("### 🔍 Risk Overview")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    risk_quick_view = [
+        ('flood', '🌊', 'Flood', col1),
+        ('landslide', '⛰️', 'Landslide', col2),
+        ('seismic', '🏗️', 'Seismic', col3),
+        ('erosion', '🌾', 'Erosion', col4),
+    ]
+    
+    for risk_key, emoji, name, col in risk_quick_view:
+        risk_data = comprehensive_risks.get(risk_key, {})
+        if risk_data:
+            with col:
+                level = risk_data.get('level', 'unknown')
+                severity = risk_data.get('severity', 0)
+                color = _get_severity_color(severity)
+                
+                st.markdown(f"""
+                <div style='background-color:{color};padding:10px;border-radius:8px;text-align:center;'>
+                    <p style='font-size:24px;margin:0;'>{emoji}</p>
+                    <p style='font-weight:bold;margin:5px 0;'>{name}</p>
+                    <p style='margin:0;font-size:14px;'>{level.replace('_', ' ').title()}</p>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    # Second row
+    col1, col2, col3 = st.columns(3)
+    
+    risk_quick_view_2 = [
+        ('drought', '💧', 'Drought', col1),
+        ('wildfire', '🔥', 'Wildfire', col2),
+        ('subsidence', '🏚️', 'Subsidence', col3),
+    ]
+    
+    for risk_key, emoji, name, col in risk_quick_view_2:
+        risk_data = comprehensive_risks.get(risk_key, {})
+        if risk_data:
+            with col:
+                level = risk_data.get('level', 'unknown')
+                severity = risk_data.get('severity', 0)
+                color = _get_severity_color(severity)
+                
+                st.markdown(f"""
+                <div style='background-color:{color};padding:10px;border-radius:8px;text-align:center;'>
+                    <p style='font-size:24px;margin:0;'>{emoji}</p>
+                    <p style='font-weight:bold;margin:5px 0;'>{name}</p>
+                    <p style='margin:0;font-size:14px;'>{level.replace('_', ' ').title()}</p>
+                </div>
+                """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    # Detailed risk breakdown
+    st.markdown("### 📋 Detailed Risk Analysis")
+    
+    risk_types = [
+        ('flood', '🌊', 'Flood Risk'),
+        ('landslide', '⛰️', 'Landslide Risk'),
+        ('erosion', '🌾', 'Erosion Risk'),
+        ('seismic', '🏗️', 'Seismic Risk'),
+        ('drought', '💧', 'Drought Risk'),
+        ('wildfire', '🔥', 'Wildfire Risk'),
+        ('subsidence', '🏚️', 'Subsidence Risk')
+    ]
+    
+    for risk_key, emoji, title in risk_types:
+        risk_data = comprehensive_risks.get(risk_key, {})
+        
+        if not risk_data or risk_data.get('level') == 'unknown':
+            continue
+        
+        severity = risk_data.get('severity', 0)
+        level = risk_data.get('level', 'unknown')
+        
+        # Expand high-risk items by default
+        expanded = severity >= 4
+        
+        with st.expander(f"{emoji} **{title}** - {level.replace('_', ' ').title()}", expanded=expanded):
+            _render_detailed_risk_card(risk_data, emoji, title)
+    
+    # Risk severity chart
+    st.markdown("### 📊 Risk Severity Comparison")
+    _render_risk_severity_chart(comprehensive_risks, risk_types)
+    
+    st.markdown("---")
+    
+    # Mitigation recommendations
+    mitigation = comprehensive_risks.get('mitigation', [])
+    if mitigation:
+        st.markdown("### 🛠️ Risk Mitigation Recommendations")
+        
+        for recommendation in mitigation:
+            st.info(recommendation)
+
+
+def _render_detailed_risk_card(risk_data: Dict, emoji: str, title: str):
+    """Render detailed information for a specific risk"""
+    
+    severity = risk_data.get('severity', 0)
+    score = risk_data.get('score', 0)
+    description = risk_data.get('description', 'No description available')
+    factors = risk_data.get('primary_factors', [])
+    impact = risk_data.get('impact', 'Impact unknown')
+    
+    # Severity display
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        color = _get_severity_color(severity)
+        st.markdown(f"""
+        <div style='background-color:{color};padding:15px;border-radius:8px;text-align:center;'>
+            <h3 style='color:white;margin:0;'>{severity}/5</h3>
+            <p style='color:white;margin:5px 0 0 0;font-size:12px;'>Severity</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"**Risk Score:** {score:.1f}/100")
+        st.progress(min(score / 100, 1.0))
+    
+    # Description
+    st.markdown(f"**📝 Description:** {description}")
+    
+    # Primary factors
+    if factors:
+        st.markdown("**🔍 Key Factors:**")
+        for factor in factors:
+            st.markdown(f"• {factor}")
+    
+    # Impact
+    st.markdown(f"**⚠️ Potential Impact:** {impact}")
+
+
+def _render_risk_severity_chart(risks: Dict, risk_types: list):
+    """Render horizontal bar chart comparing all risk severities"""
+    
+    risk_names = []
+    severities = []
+    colors = []
+    
+    for risk_key, emoji, title in risk_types:
+        risk_data = risks.get(risk_key, {})
+        
+        if risk_data and risk_data.get('level') != 'unknown':
+            risk_names.append(f"{emoji} {title.replace(' Risk', '')}")
+            severity = risk_data.get('severity', 0)
+            severities.append(severity)
+            colors.append(_get_severity_color(severity))
+    
+    if not severities:
+        st.info("No risk data available for chart")
+        return
+    
+    # Create horizontal bar chart
+    fig = go.Figure(data=[
+        go.Bar(
+            x=severities,
+            y=risk_names,
+            orientation='h',
+            marker=dict(color=colors),
+            text=[f"{s}/5" for s in severities],
+            textposition='auto',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Risk Severity Levels (0-5 scale)",
+        xaxis_title="Severity Level",
+        height=400,
+        showlegend=False,
+        xaxis=dict(range=[0, 5])
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def _get_risk_color(level: str) -> str:
+    """Get background color for risk level"""
+    colors = {
+        'very_high': '#d32f2f',
+        'high': '#f57c00',
+        'medium': '#fbc02d',
+        'low': '#388e3c',
+        'very_low': '#1b5e20',
+        'unknown': '#757575'
+    }
+    return colors.get(level, '#757575')
+
+
+def _get_severity_color(severity: int) -> str:
+    """Get color for severity level (1-5)"""
+    if severity >= 5:
+        return '#d32f2f'  # Red
+    elif severity >= 4:
+        return '#f57c00'  # Orange
+    elif severity >= 3:
+        return '#fbc02d'  # Yellow
+    elif severity >= 2:
+        return '#81c784'  # Light green
+    else:
+        return '#388e3c'  # Green
 
 
 def render_summary_metrics(results):
@@ -132,243 +410,6 @@ def render_location_summary(results):
     # Full summaries
     st.markdown("**Quick Summary:**")
     st.write(insights.get('development_potential', 'Analysis complete'))
-
-
-def render_suitability_map(results):
-    """Render interactive suitability map with 5-class classification"""
-    st.markdown("### 🗺️ Land Suitability Map")
-    
-    st.markdown("""
-    This map shows the overall suitability classification of your land based on comprehensive analysis.
-    The classification uses a weighted overlay of all factors to determine the best use potential.
-    """)
-    
-    # Get data
-    boundary = results.get('boundary', {})
-    geojson = boundary.get('geojson', {})
-    overall_score = results.get('overall_score', 5.0)
-    
-    # CRITICAL FIX: Extract centroid properly
-    centroid = boundary.get('centroid')
-    
-    # If centroid is a list [lon, lat], we need [lat, lon] for Folium
-    if centroid and isinstance(centroid, list) and len(centroid) == 2:
-        # Check if it's [lon, lat] format (likely from GeoJSON)
-        if -180 <= centroid[0] <= 180 and -90 <= centroid[1] <= 90:
-            # If first value is in lon range and second in lat range
-            if abs(centroid[0]) > abs(centroid[1]):
-                # Likely [lon, lat], need to swap
-                map_center = [centroid[1], centroid[0]]
-            else:
-                # Already [lat, lon]
-                map_center = centroid
-        else:
-            map_center = [36.19, 5.41]  # Default fallback
-    else:
-        # Try to extract from geometry
-        try:
-            if geojson and 'geometry' in geojson:
-                coords = geojson['geometry']['coordinates'][0]
-                # Calculate centroid from coordinates
-                lons = [c[0] for c in coords]
-                lats = [c[1] for c in coords]
-                map_center = [sum(lats)/len(lats), sum(lons)/len(lons)]
-            else:
-                map_center = [36.19, 5.41]  # Default
-        except:
-            map_center = [36.19, 5.41]  # Default fallback
-    
-    # Debug: Show what we're using
-    st.info(f"🗺️ Map centering on: Latitude {map_center[0]:.4f}, Longitude {map_center[1]:.4f}")
-    
-    # Determine suitability class
-    suitability_class = classify_suitability(overall_score)
-    
-    # Create map with FIXED center
-    m = folium.Map(
-        location=map_center,
-        zoom_start=16,  # Closer zoom
-        tiles='OpenStreetMap'
-    )
-    
-    # Add satellite layer
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri',
-        name='Satellite',
-        overlay=False
-    ).add_to(m)
-    
-    # Add terrain layer
-    folium.TileLayer(
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri',
-        name='Terrain',
-        overlay=False
-    ).add_to(m)
-    
-    # Get color based on suitability
-    color_map = {
-        'Very High': '#006400',  # Dark green
-        'High': '#32CD32',       # Lime green
-        'Moderate': '#FFD700',   # Gold
-        'Low': '#FF8C00',        # Dark orange
-        'Very Low': '#DC143C'    # Crimson
-    }
-    
-    fill_color = color_map.get(suitability_class['class'], '#FFD700')
-    
-    # Add boundary with suitability color
-    if geojson:
-        # CRITICAL FIX: Make sure we're using the geometry correctly
-        try:
-            folium.GeoJson(
-                geojson,
-                style_function=lambda x: {
-                    'fillColor': fill_color,
-                    'color': fill_color,
-                    'weight': 3,
-                    'fillOpacity': 0.5
-                },
-                tooltip=folium.Tooltip(
-                    f"""
-                    <b>Land Suitability Analysis</b><br>
-                    Class: {suitability_class['class']}<br>
-                    Score: {overall_score:.1f}/10<br>
-                    Rating: {suitability_class['rating']}
-                    """,
-                    sticky=True
-                )
-            ).add_to(m)
-            
-            # FIT BOUNDS TO GEOMETRY
-            # Extract bounds from geometry
-            if 'geometry' in geojson and 'coordinates' in geojson['geometry']:
-                coords = geojson['geometry']['coordinates'][0]
-                lons = [c[0] for c in coords]
-                lats = [c[1] for c in coords]
-                
-                # Set bounds to fit the geometry
-                bounds = [[min(lats), min(lons)], [max(lats), max(lons)]]
-                m.fit_bounds(bounds, padding=[50, 50])
-                
-        except Exception as e:
-            st.error(f"Error adding boundary to map: {e}")
-            # Add a marker at least
-            folium.Marker(
-                location=map_center,
-                popup=f"Analysis Location<br>Score: {overall_score:.1f}/10",
-                icon=folium.Icon(color='blue', icon='info-sign')
-            ).add_to(m)
-    
-    # Add center marker with info
-    folium.Marker(
-        location=map_center,
-        popup=folium.Popup(
-            f"""
-            <div style='width: 250px; font-family: Arial;'>
-                <h3 style='color: {fill_color}; margin: 0;'>
-                    {suitability_class['class']} Suitability
-                </h3>
-                <hr style='margin: 5px 0;'>
-                <p style='margin: 5px 0;'>
-                    <b>Overall Score:</b> {overall_score:.1f}/10<br>
-                    <b>Rating:</b> {suitability_class['rating']}<br>
-                    <b>Area:</b> {boundary.get('area_hectares', 0):.2f} ha
-                </p>
-                <hr style='margin: 5px 0;'>
-                <p style='margin: 5px 0; font-size: 11px;'>
-                    {suitability_class['description']}
-                </p>
-            </div>
-            """,
-            max_width=300
-        ),
-        icon=folium.Icon(
-            color='green' if overall_score >= 7 else 'orange' if overall_score >= 5 else 'red',
-            icon='star',
-            prefix='fa'
-        ),
-        tooltip=f"Suitability: {suitability_class['class']}"
-    ).add_to(m)
-    
-    # Add layer control
-    folium.LayerControl().add_to(m)
-    
-    # Display map
-    st_folium(m, width=800, height=500)
-    
-    # Display suitability classification
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        st.markdown(f"""
-        <div style='text-align: center; padding: 20px; background-color: {fill_color}; 
-                    border-radius: 10px; color: white; margin: 10px 0;'>
-            <h2 style='margin: 0; color: white;'>{suitability_class['class']} Suitability</h2>
-            <p style='margin: 5px 0; font-size: 18px;'>{suitability_class['rating']}</p>
-            <p style='margin: 5px 0; font-size: 14px;'>{suitability_class['description']}</p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Suitability legend
-    st.markdown("### 📊 Suitability Classification Legend")
-    
-    legend_data = {
-        'Class': ['Very High', 'High', 'Moderate', 'Low', 'Very Low'],
-        'Score Range': ['8.1 - 10.0', '6.1 - 8.0', '4.1 - 6.0', '2.1 - 4.0', '0.0 - 2.0'],
-        'Color': ['🟢', '🟢', '🟡', '🟠', '🔴'],
-        'Interpretation': [
-            'Excellent conditions - Highly recommended',
-            'Good conditions - Recommended with minor considerations',
-            'Fair conditions - Suitable with some limitations',
-            'Poor conditions - Major limitations present',
-            'Very poor conditions - Not recommended'
-        ]
-    }
-    
-    df = pd.DataFrame(legend_data)
-    st.dataframe(df, use_container_width=True, hide_index=True)
-
-
-def classify_suitability(score: float) -> dict:
-    """Classify suitability based on score (5-class system)"""
-    
-    if score > 8.0:
-        return {
-            'class': 'Very High',
-            'rating': '⭐⭐⭐⭐⭐',
-            'description': 'Excellent land with minimal constraints. Highly suitable for development.',
-            'recommendation': 'Proceed with confidence'
-        }
-    elif score > 6.0:
-        return {
-            'class': 'High',
-            'rating': '⭐⭐⭐⭐',
-            'description': 'Good land with minor limitations. Suitable for most development types.',
-            'recommendation': 'Recommended with standard precautions'
-        }
-    elif score > 4.0:
-        return {
-            'class': 'Moderate',
-            'rating': '⭐⭐⭐',
-            'description': 'Fair land with some constraints. Suitable with careful planning.',
-            'recommendation': 'Feasible with additional considerations'
-        }
-    elif score > 2.0:
-        return {
-            'class': 'Low',
-            'rating': '⭐⭐',
-            'description': 'Poor land with significant limitations. Development will be challenging.',
-            'recommendation': 'Requires major mitigation measures'
-        }
-    else:
-        return {
-            'class': 'Very Low',
-            'rating': '⭐',
-            'description': 'Very poor land with severe constraints. Not recommended for development.',
-            'recommendation': 'Consider alternative locations'
-        }
 
 
 def render_infrastructure_details(results):
@@ -457,6 +498,32 @@ def render_enhanced_insights(results):
             st.markdown("**⚠️ Considerations:**")
             for concern in concerns:
                 st.warning(concern)
+
+
+def render_analysis_map(results):
+    """Render analysis map (placeholder)"""
+    st.markdown("### 🗺️ Location Map")
+    
+    boundary = results.get('boundary', {})
+    centroid = boundary.get('centroid', [5.41, 36.19])
+    
+    # Create map
+    m = folium.Map(location=[centroid[1], centroid[0]], zoom_start=14)
+    
+    # Add boundary if available
+    geojson = boundary.get('geojson')
+    if geojson:
+        folium.GeoJson(
+            geojson,
+            style_function=lambda x: {
+                'fillColor': 'blue',
+                'color': 'blue',
+                'weight': 2,
+                'fillOpacity': 0.3
+            }
+        ).add_to(m)
+    
+    st_folium(m, width=800, height=400)
 
 
 def render_recommendations(results):
