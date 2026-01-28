@@ -23,6 +23,21 @@ class ComprehensiveRiskAssessment:
     def __init__(self):
         self.gee_client = GEEClient()
     
+    @staticmethod
+    def _safe_get(dictionary: Dict, key: str, default=0):
+        """Safely get a value from dictionary, ensuring it's not None"""
+        value = dictionary.get(key, default)
+        return value if value is not None else default
+    
+    @staticmethod
+    def _safe_compare(value, comparison_value, default=0):
+        """Safely compare values, handling None cases"""
+        if value is None:
+            value = default
+        if comparison_value is None:
+            comparison_value = default
+        return value, comparison_value
+    
     def assess_all_risks(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Perform comprehensive risk assessment
@@ -37,26 +52,60 @@ class ComprehensiveRiskAssessment:
         
         risks = {}
         
-        # 1. Flood Risk
-        risks['flood'] = self._assess_flood_risk(geometry, features)
+        # Ensure we have basic feature dictionaries
+        if 'terrain' not in features:
+            features['terrain'] = {}
+        if 'environmental' not in features:
+            features['environmental'] = {}
         
-        # 2. Landslide Risk
-        risks['landslide'] = self._assess_landslide_risk(geometry, features)
+        try:
+            # 1. Flood Risk
+            risks['flood'] = self._assess_flood_risk(geometry, features)
+        except Exception as e:
+            print(f"Flood risk assessment failed: {e}")
+            risks['flood'] = self._default_risk_assessment('flood')
         
-        # 3. Erosion Risk
-        risks['erosion'] = self._assess_erosion_risk(geometry, features)
+        try:
+            # 2. Landslide Risk
+            risks['landslide'] = self._assess_landslide_risk(geometry, features)
+        except Exception as e:
+            print(f"Landslide risk assessment failed: {e}")
+            risks['landslide'] = self._default_risk_assessment('landslide')
         
-        # 4. Seismic Risk
-        risks['seismic'] = self._assess_seismic_risk(geometry, features)
+        try:
+            # 3. Erosion Risk
+            risks['erosion'] = self._assess_erosion_risk(geometry, features)
+        except Exception as e:
+            print(f"Erosion risk assessment failed: {e}")
+            risks['erosion'] = self._default_risk_assessment('erosion')
         
-        # 5. Drought Risk
-        risks['drought'] = self._assess_drought_risk(geometry, features)
+        try:
+            # 4. Seismic Risk
+            risks['seismic'] = self._assess_seismic_risk(geometry, features)
+        except Exception as e:
+            print(f"Seismic risk assessment failed: {e}")
+            risks['seismic'] = self._default_risk_assessment('seismic')
         
-        # 6. Wildfire Risk
-        risks['wildfire'] = self._assess_wildfire_risk(geometry, features)
+        try:
+            # 5. Drought Risk
+            risks['drought'] = self._assess_drought_risk(geometry, features)
+        except Exception as e:
+            print(f"Drought risk assessment failed: {e}")
+            risks['drought'] = self._default_risk_assessment('drought')
         
-        # 7. Subsidence Risk
-        risks['subsidence'] = self._assess_subsidence_risk(geometry, features)
+        try:
+            # 6. Wildfire Risk
+            risks['wildfire'] = self._assess_wildfire_risk(geometry, features)
+        except Exception as e:
+            print(f"Wildfire risk assessment failed: {e}")
+            risks['wildfire'] = self._default_risk_assessment('wildfire')
+        
+        try:
+            # 7. Subsidence Risk
+            risks['subsidence'] = self._assess_subsidence_risk(geometry, features)
+        except Exception as e:
+            print(f"Subsidence risk assessment failed: {e}")
+            risks['subsidence'] = self._default_risk_assessment('subsidence')
         
         # Calculate overall risk profile
         risks['overall'] = self._calculate_overall_risk(risks)
@@ -428,9 +477,13 @@ class ComprehensiveRiskAssessment:
         """
         
         try:
-            # Get centroid coordinates
-            coords = geometry.centroid().coordinates().getInfo()
-            lon, lat = coords[0], coords[1]
+            # Get centroid coordinates safely
+            try:
+                coords = geometry.centroid().coordinates().getInfo()
+                lon = coords[0] if coords and len(coords) > 0 else 5.41
+                lat = coords[1] if coords and len(coords) > 1 else 36.19
+            except:
+                lon, lat = 5.41, 36.19  # Default to Sétif
             
             # Algeria seismic zones (simplified)
             # Northern Algeria (Tell Atlas) is more seismically active
@@ -539,10 +592,10 @@ class ComprehensiveRiskAssessment:
         
         try:
             coords = geometry.centroid().coordinates().getInfo()
-            lat = coords[1]
+            lat = coords[1] if coords and len(coords) > 1 else 36.0
             
             env = features.get('environmental', {})
-            ndvi = env.get('ndvi_avg', 0.5)
+            ndvi = env.get('ndvi_avg', 0.5) or 0.5
             
             # Calculate drought risk (higher score = higher risk)
             drought_score = 0
