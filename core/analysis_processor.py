@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: core/analysis_processor.py (ENHANCED VERSION)
+# FILE: core/analysis_processor.py (ENHANCED VERSION WITH COMPREHENSIVE RISKS)
 # ============================================================================
 
 from typing import Dict
@@ -9,7 +9,7 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 class AnalysisProcessor:
-    """Coordinate the overall analysis workflow with enhanced criteria"""
+    """Coordinate the overall analysis workflow with enhanced criteria and comprehensive risk assessment"""
     
     def __init__(self, use_real_osm: bool = True):
         self.ee_available = EarthEngineManager.is_available()
@@ -49,7 +49,7 @@ class AnalysisProcessor:
         """Run complete enhanced land evaluation analysis"""
         
         try:
-            logger.info("Starting enhanced land evaluation analysis")
+            logger.info("Starting enhanced land evaluation analysis with comprehensive risk assessment")
             
             # Step 1: Extract features
             if progress_callback:
@@ -119,7 +119,7 @@ class AnalysisProcessor:
             raise
     
     def _extract_all_features(self, boundary_data: Dict) -> Dict:
-        """Extract all features including enhanced infrastructure data"""
+        """Extract all features including enhanced infrastructure data and comprehensive risks"""
         
         ee_geometry = boundary_data.get('ee_geometry')
         shapely_geometry = boundary_data.get('geometry')
@@ -142,12 +142,32 @@ class AnalysisProcessor:
             features['terrain'] = self._get_default_terrain()
             print("ℹ Using default terrain features (EE not available)")
         
-        # Extract environmental features (requires EE)
-        print("2/3: Extracting environmental features...")
+        # Extract environmental features (requires EE) - NOW WITH COMPREHENSIVE RISK ASSESSMENT
+        print("2/3: Extracting environmental features and comprehensive risk assessment...")
         if self.ee_available and ee_geometry:
             try:
-                features['environmental'] = self.env_extractor.extract(ee_geometry)
+                # Pass terrain features to environmental extractor for better risk assessment
+                features['environmental'] = self.env_extractor.extract(
+                    ee_geometry,
+                    terrain_features=features['terrain']  # Pass terrain for risk calculation
+                )
                 print("✓ Environmental features extracted")
+                
+                # Display risk summary if available
+                comprehensive_risks = features['environmental'].get('comprehensive_risks', {})
+                if comprehensive_risks:
+                    print("\n  === Risk Assessment Summary ===")
+                    overall = comprehensive_risks.get('overall', {})
+                    print(f"  Overall Risk Level: {overall.get('level', 'unknown').replace('_', ' ').title()}")
+                    print(f"  High Risks: {overall.get('high_risk_count', 0)}, Medium Risks: {overall.get('medium_risk_count', 0)}")
+                    
+                    # Show critical risks
+                    for risk_type in ['flood', 'landslide', 'erosion', 'seismic', 'drought', 'wildfire', 'subsidence']:
+                        risk_data = comprehensive_risks.get(risk_type, {})
+                        if risk_data.get('severity', 0) >= 4:  # High or Very High
+                            print(f"  ⚠️ {risk_type.title()}: {risk_data.get('level', 'unknown').replace('_', ' ').title()}")
+                    print("  ================================\n")
+                    
             except Exception as e:
                 print(f"⚠ Environmental extraction failed: {e}")
                 features['environmental'] = self._get_default_environmental()
@@ -188,7 +208,7 @@ class AnalysisProcessor:
     ) -> Dict:
         """Compile all results with enhanced insights"""
         
-        # Generate enhanced insights
+        # Generate enhanced insights (now includes comprehensive risks)
         enhanced_insights = self._generate_enhanced_insights(features, final_scores)
         
         return {
@@ -209,7 +229,7 @@ class AnalysisProcessor:
         }
     
     def _generate_enhanced_insights(self, features: Dict, scores: Dict) -> Dict:
-        """Generate comprehensive insights from all features"""
+        """Generate comprehensive insights from all features including comprehensive risks"""
         insights = {
             'strengths': [],
             'concerns': [],
@@ -222,6 +242,9 @@ class AnalysisProcessor:
         terrain = features.get('terrain', {})
         env = features.get('environmental', {})
         infra = features.get('infrastructure', {})
+        
+        # Get comprehensive risks
+        comprehensive_risks = env.get('comprehensive_risks', {})
         
         # === STRENGTHS ===
         
@@ -273,7 +296,20 @@ class AnalysisProcessor:
                 f"Complete infrastructure: {utilities_count}/4 major utilities available"
             )
         
-        # === CONCERNS ===
+        # Low risk strengths
+        if comprehensive_risks:
+            low_risk_count = 0
+            for risk_type in ['flood', 'landslide', 'erosion', 'wildfire']:
+                risk_data = comprehensive_risks.get(risk_type, {})
+                if risk_data.get('severity', 5) <= 2:  # Low or very low
+                    low_risk_count += 1
+            
+            if low_risk_count >= 3:
+                insights['strengths'].append(
+                    f"Low environmental risks: Minimal {', '.join([r for r in ['flood', 'landslide', 'erosion', 'wildfire'] if comprehensive_risks.get(r, {}).get('severity', 5) <= 2])} risk"
+                )
+        
+        # === CONCERNS (Now includes comprehensive risks) ===
         
         # Terrain concerns
         if terrain.get('slope_avg', 0) > 15:
@@ -281,16 +317,80 @@ class AnalysisProcessor:
                 f"Steep terrain: {terrain.get('slope_avg', 0):.1f}° slope may increase construction costs by 20-40%"
             )
         
-        # Environmental concerns
-        flood_risk = env.get('flood_risk_percent', 0)
-        if flood_risk > 30:
-            insights['concerns'].append(
-                f"Significant flood risk: {flood_risk:.0f}% of area affected - consider drainage infrastructure"
-            )
-        elif flood_risk > 10:
-            insights['concerns'].append(
-                f"Moderate flood risk: {flood_risk:.0f}% of area - mitigation recommended"
-            )
+        # COMPREHENSIVE RISK CONCERNS
+        if comprehensive_risks:
+            # Flood risk
+            flood = comprehensive_risks.get('flood', {})
+            if flood.get('severity', 0) >= 4:
+                insights['concerns'].append(
+                    f"🌊 HIGH FLOOD RISK: {flood.get('description', 'Significant flooding expected')} - {flood.get('impact', '')}"
+                )
+            elif flood.get('severity', 0) >= 3:
+                insights['concerns'].append(
+                    f"🌊 Moderate flood risk: {flood.get('affected_area_percent', 0):.0f}% of area - drainage infrastructure recommended"
+                )
+            
+            # Landslide risk
+            landslide = comprehensive_risks.get('landslide', {})
+            if landslide.get('severity', 0) >= 4:
+                insights['concerns'].append(
+                    f"⛰️ HIGH LANDSLIDE RISK: {landslide.get('description', 'Unstable slopes')} - Slope stabilization essential"
+                )
+            elif landslide.get('severity', 0) >= 3:
+                insights['concerns'].append(
+                    f"⛰️ Moderate landslide risk: Slopes up to {landslide.get('slope_max', 0):.1f}° - engineering assessment needed"
+                )
+            
+            # Erosion risk
+            erosion = comprehensive_risks.get('erosion', {})
+            if erosion.get('severity', 0) >= 4:
+                insights['concerns'].append(
+                    f"🌾 HIGH EROSION RISK: {erosion.get('description', 'Rapid soil loss expected')} - Erosion control essential"
+                )
+            
+            # Seismic risk
+            seismic = comprehensive_risks.get('seismic', {})
+            if seismic.get('severity', 0) >= 4:
+                insights['concerns'].append(
+                    f"🏗️ HIGH SEISMIC RISK: Zone {seismic.get('seismic_zone', 'Unknown')} - Strict seismic building codes required"
+                )
+            elif seismic.get('severity', 0) >= 3:
+                insights['concerns'].append(
+                    f"🏗️ Moderate seismic risk: {seismic.get('description', 'Seismic design required')}"
+                )
+            
+            # Drought risk
+            drought = comprehensive_risks.get('drought', {})
+            if drought.get('severity', 0) >= 4:
+                insights['concerns'].append(
+                    f"💧 HIGH DROUGHT RISK: {drought.get('description', 'Water scarcity severe')} - Water storage systems essential"
+                )
+            
+            # Wildfire risk
+            wildfire = comprehensive_risks.get('wildfire', {})
+            if wildfire.get('severity', 0) >= 4:
+                insights['concerns'].append(
+                    f"🔥 HIGH WILDFIRE RISK: {wildfire.get('description', 'Critical fire risk')} - Fire prevention essential"
+                )
+            
+            # Subsidence risk
+            subsidence = comprehensive_risks.get('subsidence', {})
+            if subsidence.get('severity', 0) >= 3:
+                insights['concerns'].append(
+                    f"🏚️ Subsidence risk: {subsidence.get('description', 'Soil investigation needed')}"
+                )
+        
+        # Legacy flood risk (for backward compatibility)
+        else:
+            flood_risk = env.get('flood_risk_percent', 0)
+            if flood_risk > 30:
+                insights['concerns'].append(
+                    f"Significant flood risk: {flood_risk:.0f}% of area affected - consider drainage infrastructure"
+                )
+            elif flood_risk > 10:
+                insights['concerns'].append(
+                    f"Moderate flood risk: {flood_risk:.0f}% of area - mitigation recommended"
+                )
         
         # Accessibility concerns
         if road_dist > 2000:
@@ -359,16 +459,36 @@ class AnalysisProcessor:
         
         insights['accessibility_summary'] = f"{access_level} accessibility (Score: {access_score:.1f}/10) - {road_dist:.0f}m to nearest road"
         
-        # Development potential
+        # Development potential (now factors in comprehensive risks)
         overall_score = scores.get('overall_score', 5)
-        if overall_score > 8:
-            potential = "Exceptional development potential with minimal constraints"
-        elif overall_score > 6:
-            potential = "Strong development potential with manageable challenges"
-        elif overall_score > 4:
-            potential = "Moderate development potential - careful planning required"
+        
+        # Adjust for high risks
+        if comprehensive_risks:
+            overall_risk = comprehensive_risks.get('overall', {})
+            high_risk_count = overall_risk.get('high_risk_count', 0)
+            
+            if high_risk_count >= 3:
+                potential = "Limited development potential - multiple high-risk factors require extensive mitigation"
+            elif high_risk_count >= 2:
+                potential = "Moderate development potential - significant risk mitigation required"
+            elif overall_score > 8:
+                potential = "Exceptional development potential with manageable risk factors"
+            elif overall_score > 6:
+                potential = "Strong development potential with standard risk mitigation"
+            elif overall_score > 4:
+                potential = "Moderate development potential - careful planning and risk assessment required"
+            else:
+                potential = "Limited development potential - significant constraints present"
         else:
-            potential = "Limited development potential - significant constraints present"
+            # Fallback without comprehensive risks
+            if overall_score > 8:
+                potential = "Exceptional development potential with minimal constraints"
+            elif overall_score > 6:
+                potential = "Strong development potential with manageable challenges"
+            elif overall_score > 4:
+                potential = "Moderate development potential - careful planning required"
+            else:
+                potential = "Limited development potential - significant constraints present"
         
         insights['development_potential'] = potential
         
@@ -379,7 +499,8 @@ class AnalysisProcessor:
         sources = {
             'terrain': 'Default values' if not self.ee_available else 'Google Earth Engine (SRTM)',
             'environmental': 'Default values' if not self.ee_available else 'Google Earth Engine (Sentinel-2, ESA WorldCover)',
-            'infrastructure': features.get('infrastructure', {}).get('data_quality', 'unknown')
+            'infrastructure': features.get('infrastructure', {}).get('data_quality', 'unknown'),
+            'risk_assessment': 'Comprehensive (7 risk types)' if features.get('environmental', {}).get('comprehensive_risks') else 'Basic (flood only)'
         }
         
         return sources
