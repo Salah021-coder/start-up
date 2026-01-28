@@ -49,7 +49,7 @@ def render():
     # Summary metrics
     render_summary_metrics(results)
     
-    st.markdown("---")
+    st.info("---")
     
     # === NEW: COMPREHENSIVE RISK ASSESSMENT SECTION ===
     render_comprehensive_risk_section(results)
