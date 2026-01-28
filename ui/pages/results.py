@@ -355,31 +355,72 @@ def _get_severity_color(severity: int) -> str:
     else:
         return '#388e3c'  # Green
 
+def metric_card(title, value, delta=None):
+    delta_html = ""
+    if delta is not None:
+        color = "#22c55e" if delta.startswith("+") else "#ef4444"
+        delta_html = f"""
+        <div style="
+            margin-top:6px;
+            font-size:14px;
+            color:{color};
+            font-weight:600;
+        ">
+            {delta}
+        </div>
+        """
+
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #0f172a, #020617);
+            border: 1px solid #1e293b;
+            border-radius: 14px;
+            padding: 18px;
+            height: 120px;
+            box-shadow: 0 10px 25px rgba(0,0,0,.35);
+        ">
+            <div style="color:#94a3b8;font-size:13px;">
+                {title}
+            </div>
+            <div style="
+                color:white;
+                font-size:34px;
+                font-weight:700;
+                margin-top:6px;
+            ">
+                {value}
+            </div>
+            {delta_html}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 def render_summary_metrics(results):
-    """Render summary metrics"""
 
-    st.info("📈 Summary Metrics")
+    st.markdown("### 📈 Summary Metrics")
 
-    with st.container():
-        col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4 = st.columns(4)
 
-        with col1:
-            score = results.get('overall_score', 0)
-            delta = f"+{(score-5):.1f}" if score > 5 else f"{(score-5):.1f}"
-            st.metric("Overall Score", f"{score:.1f}/10", delta=delta)
+    score = results.get('overall_score', 0)
+    delta = f"+{(score-5):.1f}" if score > 5 else f"{(score-5):.1f}"
 
-        with col2:
-            confidence = results.get('confidence_level', 0) * 100
-            st.metric("Confidence", f"{confidence:.0f}%")
+    with col1:
+        metric_card("Overall Score", f"{score:.1f}/10", delta)
 
-        with col3:
-            risk = results.get('risk_assessment', {}).get('level', 'medium')
-            st.metric("Risk Level", risk.title())
+    with col2:
+        confidence = results.get('confidence_level', 0) * 100
+        metric_card("Confidence", f"{confidence:.0f}%")
 
-        with col4:
-            area = results.get('boundary', {}).get('area_hectares', 0)
-            st.metric("Area", f"{area:.2f} ha")
+    with col3:
+        risk = results.get('risk_assessment', {}).get('level', 'Medium')
+        metric_card("Risk Level", risk)
+
+    with col4:
+        area = results.get('boundary', {}).get('area_hectares', 0)
+        metric_card("Area", f"{area:.2f} ha")
 
 
 
@@ -653,6 +694,7 @@ def render_export_options(results):
                 file_name="boundary.geojson",
                 mime="application/json"
             )
+
 
 
 
