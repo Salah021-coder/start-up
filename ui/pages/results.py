@@ -365,19 +365,19 @@ def render_summary_metrics(results):
     with col1:
         score = results.get('overall_score', 0)
         delta = f"+{(score-5):.1f}" if score > 5 else f"{(score-5):.1f}"
-        st.metric("Overall Score", f"{score:.1f}/10", delta=delta)
+        st.info("Overall Score", f"{score:.1f}/10", delta=delta)
     
     with col2:
         confidence = results.get('confidence_level', 0) * 100
-        st.metric("Confidence", f"{confidence:.0f}%")
+        st.info("Confidence", f"{confidence:.0f}%")
     
     with col3:
         risk = results.get('risk_assessment', {}).get('level', 'medium')
-        st.metric("Risk Level", risk.title())
+        st.info("Risk Level", risk.title())
     
     with col4:
         area = results.get('boundary', {}).get('area_hectares', 0)
-        st.metric("Area", f"{area:.2f} ha")
+        st.info("Area", f"{area:.2f} ha")
 
 
 def render_location_summary(results):
@@ -650,4 +650,5 @@ def render_export_options(results):
                 file_name="boundary.geojson",
                 mime="application/json"
             )
+
 
