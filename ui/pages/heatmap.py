@@ -124,28 +124,70 @@ def run_heatmap_analysis(boundary_data, land_use_type, grid_size, max_points):
                 st.code(traceback.format_exc())
 
 
+def metric_card(title, value, delta=None):
+    delta_html = ""
+    if delta is not None:
+        color = "#22c55e" if delta.startswith("+") else "#ef4444"
+        delta_html = f"""
+        <div style="
+            margin-top:6px;
+            font-size:14px;
+            color:{color};
+            font-weight:600;
+        ">
+            {delta}
+        </div>
+        """
+
+    st.markdown(
+        f"""
+        <div style="
+            background: linear-gradient(135deg, #0f172a, #020617);
+            border: 1px solid #1e293b;
+            border-radius: 14px;
+            padding: 18px;
+            height: 120px;
+            box-shadow: 0 10px 25px rgba(0,0,0,.35);
+        ">
+            <div style="color:#94a3b8;font-size:13px;">
+                {title}
+            </div>
+            <div style="
+                color:white;
+                font-size:34px;
+                font-weight:700;
+                margin-top:6px;
+            ">
+                {value}
+            </div>
+            {delta_html}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 def render_heatmap_results(results):
     """Render heatmap analysis results"""
-    
+
     st.markdown("---")
-    
-    with st.info("📊 Analysis Results"):
-        stats = results['statistics']
-        
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.metric("Points Analyzed", stats['total_points'])
-        
-        with col2:
-            st.metric("Average Score", f"{stats['avg_score']:.1f}/10")
-        
-        with col3:
-            st.metric("Best Score", f"{stats['max_score']:.1f}/10")
-        
-        with col4:
-            excellent_pct = (stats['excellent_count'] / stats['total_points']) * 100
-            st.metric("Excellent Areas", f"{excellent_pct:.0f}%")
+    st.markdown("## 📊 Analysis Results")
+
+    stats = results["statistics"]
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+        metric_card("Points Analyzed", stats["total_points"])
+
+    with col2:
+        metric_card("Average Score", f"{stats['avg_score']:.1f}/10")
+
+    with col3:
+        metric_card("Best Score", f"{stats['max_score']:.1f}/10")
+
+    with col4:
+        excellent_pct = (stats["excellent_count"] / stats["total_points"]) * 100
+        metric_card("Excellent Areas", f"{excellent_pct:.0f}%")
 
     
     # Heatmap
