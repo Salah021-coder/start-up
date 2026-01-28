@@ -1,7 +1,6 @@
-# ============================================================================
-# FILE: data/feature_extraction/risk_assessment.py (NEW FILE)
-# ============================================================================
-
+============================================================================
+FILE: data/feature_extraction/risk_assessment.py (FIXED)
+============================================================================
 import ee
 from typing import Dict, List
 from data.earth_engine.gee_client import GEEClient
@@ -19,25 +18,45 @@ class ComprehensiveRiskAssessment:
     - Wildfire risk
     - Subsidence risk
     """
-    
     def __init__(self):
         self.gee_client = GEEClient()
-    
+
     @staticmethod
-    def _safe_get(dictionary: Dict, key: str, default=0):
-        """Safely get a value from dictionary, ensuring it's not None"""
+    def _safe_get(dictionary: Dict, key: str, default=0.0):
+        """Safely get a numeric value from dictionary, ensuring it's not None and is float-compatible"""
+        if not isinstance(dictionary, dict):
+            return float(default)
+        
         value = dictionary.get(key, default)
-        return value if value is not None else default
-    
-    @staticmethod
-    def _safe_compare(value, comparison_value, default=0):
-        """Safely compare values, handling None cases"""
         if value is None:
-            value = default
-        if comparison_value is None:
-            comparison_value = default
-        return value, comparison_value
-    
+            return float(default)
+        
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    @staticmethod
+    def _safe_get_coords(geometry: ee.Geometry, default_lon=5.41, default_lat=36.19):
+        """Safely extract coordinates from geometry with robust error handling"""
+        try:
+            coords = geometry.centroid().coordinates().getInfo()
+            if isinstance(coords, list) and len(coords) >= 2:
+                try:
+                    lon = float(coords[0])
+                except (TypeError, ValueError, IndexError):
+                    lon = float(default_lon)
+                
+                try:
+                    lat = float(coords[1])
+                except (TypeError, ValueError, IndexError):
+                    lat = float(default_lat)
+                return lon, lat
+        except Exception:
+            pass
+        
+        return float(default_lon), float(default_lat)
+
     def assess_all_risks(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Perform comprehensive risk assessment
@@ -53,9 +72,12 @@ class ComprehensiveRiskAssessment:
         risks = {}
         
         # Ensure we have basic feature dictionaries
-        if 'terrain' not in features:
+        if not isinstance(features, dict):
+            features = {}
+        
+        if 'terrain' not in features or not isinstance(features['terrain'], dict):
             features['terrain'] = {}
-        if 'environmental' not in features:
+        if 'environmental' not in features or not isinstance(features['environmental'], dict):
             features['environmental'] = {}
         
         try:
@@ -109,7 +131,7 @@ class ComprehensiveRiskAssessment:
         
         # Calculate overall risk profile
         risks['overall'] = self._calculate_overall_risk(risks)
-        
+         
         # Generate risk summary
         risks['summary'] = self._generate_risk_summary(risks)
         
@@ -117,11 +139,11 @@ class ComprehensiveRiskAssessment:
         risks['mitigation'] = self._generate_mitigation_recommendations(risks)
         
         return risks
-    
+
     # ========================================================================
     # FLOOD RISK ASSESSMENT
     # ========================================================================
-    
+
     def _assess_flood_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Assess flood risk using multiple indicators:
@@ -134,40 +156,43 @@ class ComprehensiveRiskAssessment:
         try:
             # Get water occurrence from JRC dataset
             water_data = self.gee_client.get_water_occurrence(geometry)
-            water_occurrence = water_data.get('water_occurrence_avg', 0) or 0
+            water_occurrence = self._safe_get(water_data, 'water_occurrence_avg', 0.0)
             
             # Get terrain data
             terrain = features.get('terrain', {})
-            slope = terrain.get('slope_avg', 5) or 5
-            elevation = terrain.get('elevation_avg', 100) or 100
+            slope = self._safe_get(terrain, 'slope_avg', 5.0)
+            elevation = self._safe_get(terrain, 'elevation_avg', 100.0)
             
             # Calculate flood risk score (0-100)
-            flood_score = 0
+            flood_score = 0.0
             
             # Water occurrence is primary indicator
             flood_score += water_occurrence * 0.6
             
             # Low slope increases flood risk
-            if slope < 2:
-                flood_score += 20
-            elif slope < 5:
-                flood_score += 10
+            if slope < 2.0:
+                flood_score += 20.0
+            elif slope < 5.0:
+                flood_score += 10.0
             
             # Low elevation near water increases risk
-            if elevation < 50 and water_occurrence > 10:
-                flood_score += 20
+            if elevation < 50.0 and water_occurrence > 10.0:
+                flood_score += 20.0
+            
+            # Ensure score doesn't exceed 100
+            flood_score = min(flood_score, 100.0)
             
             # Classify risk level
-            if flood_score >= 60:
+            if flood_score >= 60.0:
                 level = 'very_high'
                 severity = 5
-            elif flood_score >= 40:
+            elif flood_score >= 40.0:
                 level = 'high'
                 severity = 4
-            elif flood_score >= 20:
+            elif flood_score >= 20.0:
                 level = 'medium'
                 severity = 3
-            elif flood_score >= 10:
+            elif flood_score >= 10.0:
                 level = 'low'
                 severity = 2
             else:
@@ -188,23 +213,23 @@ class ComprehensiveRiskAssessment:
         except Exception as e:
             print(f"Error assessing flood risk: {e}")
             return self._default_risk_assessment('flood')
-    
+
     def _get_flood_factors(self, slope: float, elevation: float, water_occ: float) -> List[str]:
         """Identify primary flood risk factors"""
         factors = []
         
-        if water_occ > 30:
+        if water_occ > 30.0:
             factors.append(f"High water occurrence: {water_occ:.0f}%")
-        if slope < 2:
+        if slope < 2.0:
             factors.append(f"Very flat terrain: {slope:.1f}° (poor drainage)")
-        if elevation < 50:
+        if elevation < 50.0:
             factors.append(f"Low elevation: {elevation:.0f}m (flood-prone)")
         
         if not factors:
             factors.append("No significant flood indicators detected")
         
         return factors
-    
+
     def _get_flood_description(self, level: str) -> str:
         """Get flood risk description"""
         descriptions = {
@@ -215,7 +240,7 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Minimal flood risk - well-drained area'
         }
         return descriptions.get(level, 'Unknown risk level')
-    
+
     def _get_flood_impact(self, level: str) -> str:
         """Get flood impact description"""
         impacts = {
@@ -226,11 +251,11 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Negligible impact on development'
         }
         return impacts.get(level, 'Unknown impact')
-    
+
     # ========================================================================
     # LANDSLIDE RISK ASSESSMENT
     # ========================================================================
-    
+
     def _assess_landslide_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Assess landslide risk based on:
@@ -244,53 +269,56 @@ class ComprehensiveRiskAssessment:
             terrain = features.get('terrain', {})
             env = features.get('environmental', {})
             
-            slope_avg = terrain.get('slope_avg', 0) or 0
-            slope_max = terrain.get('slope_max', 0) or 0
-            elevation_max = terrain.get('elevation_max', 0) or 0
-            elevation_min = terrain.get('elevation_min', 0) or 0
-            elevation_range = elevation_max - elevation_min
-            ndvi = env.get('ndvi_avg', 0.5) or 0.5
+            slope_avg = self._safe_get(terrain, 'slope_avg', 0.0)
+            slope_max = self._safe_get(terrain, 'slope_max', 0.0)
+            elevation_max = self._safe_get(terrain, 'elevation_max', 0.0)
+            elevation_min = self._safe_get(terrain, 'elevation_min', 0.0)
+            elevation_range = max(0.0, elevation_max - elevation_min)
+            ndvi = self._safe_get(env, 'ndvi_avg', 0.5)
             
             # Calculate landslide risk score
-            landslide_score = 0
+            landslide_score = 0.0
             
             # Steep slopes are primary factor
-            if slope_avg > 30:
-                landslide_score += 40
-            elif slope_avg > 20:
-                landslide_score += 30
-            elif slope_avg > 15:
-                landslide_score += 20
-            elif slope_avg > 10:
-                landslide_score += 10
+            if slope_avg > 30.0:
+                landslide_score += 40.0
+            elif slope_avg > 20.0:
+                landslide_score += 30.0
+            elif slope_avg > 15.0:
+                landslide_score += 20.0
+            elif slope_avg > 10.0:
+                landslide_score += 10.0
             
             # Maximum slope
-            if slope_max > 40:
-                landslide_score += 30
-            elif slope_max > 30:
-                landslide_score += 20
+            if slope_max > 40.0:
+                landslide_score += 30.0
+            elif slope_max > 30.0:
+                landslide_score += 20.0
             
             # Elevation variation
-            if elevation_range > 100:
-                landslide_score += 20
-            elif elevation_range > 50:
-                landslide_score += 10
+            if elevation_range > 100.0:
+                landslide_score += 20.0
+            elif elevation_range > 50.0:
+                landslide_score += 10.0
             
             # Poor vegetation (less soil stability)
             if ndvi < 0.3:
-                landslide_score += 10
+                landslide_score += 10.0
+            
+            # Ensure score doesn't exceed 100
+            landslide_score = min(landslide_score, 100.0)
             
             # Classify risk
-            if landslide_score >= 70:
+            if landslide_score >= 70.0:
                 level = 'very_high'
                 severity = 5
-            elif landslide_score >= 50:
+            elif landslide_score >= 50.0:
                 level = 'high'
                 severity = 4
-            elif landslide_score >= 30:
+            elif landslide_score >= 30.0:
                 level = 'medium'
                 severity = 3
-            elif landslide_score >= 15:
+            elif landslide_score >= 15.0:
                 level = 'low'
                 severity = 2
             else:
@@ -312,27 +340,27 @@ class ComprehensiveRiskAssessment:
         except Exception as e:
             print(f"Error assessing landslide risk: {e}")
             return self._default_risk_assessment('landslide')
-    
+
     def _get_landslide_factors(self, slope_avg: float, slope_max: float, elev_range: float) -> List[str]:
         """Identify landslide risk factors"""
         factors = []
         
-        if slope_avg > 25:
+        if slope_avg > 25.0:
             factors.append(f"Very steep average slope: {slope_avg:.1f}°")
-        elif slope_avg > 15:
+        elif slope_avg > 15.0:
             factors.append(f"Steep slopes: {slope_avg:.1f}°")
         
-        if slope_max > 35:
+        if slope_max > 35.0:
             factors.append(f"Extremely steep areas: {slope_max:.1f}° maximum")
         
-        if elev_range > 100:
+        if elev_range > 100.0:
             factors.append(f"High elevation variation: {elev_range:.0f}m")
         
         if not factors:
             factors.append("Gentle terrain - landslide risk minimal")
         
         return factors
-    
+
     def _get_landslide_description(self, level: str) -> str:
         """Get landslide risk description"""
         descriptions = {
@@ -343,7 +371,7 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Minimal landslide risk - stable terrain'
         }
         return descriptions.get(level, 'Unknown risk level')
-    
+
     def _get_landslide_impact(self, level: str) -> str:
         """Get landslide impact description"""
         impacts = {
@@ -354,11 +382,11 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Negligible impact on development'
         }
         return impacts.get(level, 'Unknown impact')
-    
+
     # ========================================================================
     # EROSION RISK ASSESSMENT
     # ========================================================================
-    
+
     def _assess_erosion_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Assess soil erosion risk based on:
@@ -372,40 +400,43 @@ class ComprehensiveRiskAssessment:
             terrain = features.get('terrain', {})
             env = features.get('environmental', {})
             
-            slope = terrain.get('slope_avg', 0) or 0
-            ndvi = env.get('ndvi_avg', 0.5) or 0.5
+            slope = self._safe_get(terrain, 'slope_avg', 0.0)
+            ndvi = self._safe_get(env, 'ndvi_avg', 0.5)
             
             # Calculate erosion risk score
-            erosion_score = 0
+            erosion_score = 0.0
             
             # Slope factor
-            if slope > 15:
-                erosion_score += 30
-            elif slope > 10:
-                erosion_score += 20
-            elif slope > 5:
-                erosion_score += 10
+            if slope > 15.0:
+                erosion_score += 30.0
+            elif slope > 10.0:
+                erosion_score += 20.0
+            elif slope > 5.0:
+                erosion_score += 10.0
             
             # Vegetation cover (protects against erosion)
             if ndvi < 0.2:
-                erosion_score += 40  # Bare soil
+                erosion_score += 40.0  # Bare soil
             elif ndvi < 0.4:
-                erosion_score += 25  # Sparse vegetation
+                erosion_score += 25.0  # Sparse vegetation
             elif ndvi < 0.6:
-                erosion_score += 10  # Moderate vegetation
+                erosion_score += 10.0  # Moderate vegetation
             # Good vegetation (ndvi > 0.6) reduces risk
             
+            # Ensure score doesn't exceed 100
+            erosion_score = min(erosion_score, 100.0)
+            
             # Classify risk
-            if erosion_score >= 60:
+            if erosion_score >= 60.0:
                 level = 'very_high'
                 severity = 5
-            elif erosion_score >= 45:
+            elif erosion_score >= 45.0:
                 level = 'high'
                 severity = 4
-            elif erosion_score >= 25:
+            elif erosion_score >= 25.0:
                 level = 'medium'
                 severity = 3
-            elif erosion_score >= 10:
+            elif erosion_score >= 10.0:
                 level = 'low'
                 severity = 2
             else:
@@ -426,12 +457,12 @@ class ComprehensiveRiskAssessment:
         except Exception as e:
             print(f"Error assessing erosion risk: {e}")
             return self._default_risk_assessment('erosion')
-    
+
     def _get_erosion_factors(self, slope: float, ndvi: float) -> List[str]:
         """Identify erosion risk factors"""
         factors = []
         
-        if slope > 15:
+        if slope > 15.0:
             factors.append(f"Steep slopes: {slope:.1f}° (high runoff)")
         
         if ndvi < 0.3:
@@ -443,7 +474,7 @@ class ComprehensiveRiskAssessment:
             factors.append("Moderate conditions - standard erosion control needed")
         
         return factors
-    
+
     def _get_erosion_description(self, level: str) -> str:
         """Get erosion risk description"""
         descriptions = {
@@ -454,7 +485,7 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Minimal erosion risk - stable soil'
         }
         return descriptions.get(level, 'Unknown risk level')
-    
+
     def _get_erosion_impact(self, level: str) -> str:
         """Get erosion impact description"""
         impacts = {
@@ -465,11 +496,11 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Negligible soil loss'
         }
         return impacts.get(level, 'Unknown impact')
-    
+
     # ========================================================================
     # SEISMIC RISK ASSESSMENT
     # ========================================================================
-    
+
     def _assess_seismic_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Assess earthquake/seismic risk
@@ -478,27 +509,22 @@ class ComprehensiveRiskAssessment:
         
         try:
             # Get centroid coordinates safely
-            try:
-                coords = geometry.centroid().coordinates().getInfo()
-                lon = coords[0] if coords and len(coords) > 0 else 5.41
-                lat = coords[1] if coords and len(coords) > 1 else 36.19
-            except:
-                lon, lat = 5.41, 36.19  # Default to Sétif
+            lon, lat = self._safe_get_coords(geometry, 5.41, 36.19)
             
             # Algeria seismic zones (simplified)
             # Northern Algeria (Tell Atlas) is more seismically active
             seismic_score = self._calculate_algeria_seismic_risk(lat, lon)
             
             # Classify risk
-            if seismic_score >= 70:
+            if seismic_score >= 70.0:
                 level = 'very_high'
                 severity = 5
                 zone = 'IV'
-            elif seismic_score >= 50:
+            elif seismic_score >= 50.0:
                 level = 'high'
                 severity = 4
                 zone = 'III'
-            elif seismic_score >= 30:
+            elif seismic_score >= 30.0:
                 level = 'medium'
                 severity = 3
                 zone = 'II'
@@ -513,6 +539,7 @@ class ComprehensiveRiskAssessment:
                 'score': round(seismic_score, 1),
                 'seismic_zone': zone,
                 'latitude': lat,
+                'longitude': lon,
                 'primary_factors': self._get_seismic_factors(zone, lat),
                 'description': self._get_seismic_description(level),
                 'impact': self._get_seismic_impact(level)
@@ -521,7 +548,7 @@ class ComprehensiveRiskAssessment:
         except Exception as e:
             print(f"Error assessing seismic risk: {e}")
             return self._default_risk_assessment('seismic')
-    
+
     def _calculate_algeria_seismic_risk(self, lat: float, lon: float) -> float:
         """
         Calculate seismic risk for Algeria based on known seismic zones
@@ -531,22 +558,22 @@ class ComprehensiveRiskAssessment:
         # High risk zone: Northern Algeria (coastal areas, Tell Atlas)
         if lat > 36.0:  # Northern coastal region
             if 2.5 <= lon <= 6.0:  # Algiers-Oran region (very active)
-                return 75
+                return 75.0
             else:
-                return 60
+                return 60.0
         
         # Medium-high risk: North-central
         elif lat > 35.0:
-            return 50
+            return 50.0
         
         # Medium risk: Central plateau
         elif lat > 33.0:
-            return 35
+            return 35.0
         
         # Lower risk: Saharan region
         else:
-            return 20
-    
+            return 20.0
+
     def _get_seismic_factors(self, zone: str, lat: float) -> List[str]:
         """Identify seismic risk factors"""
         factors = []
@@ -557,7 +584,7 @@ class ComprehensiveRiskAssessment:
         factors.append(f"Seismic Zone {zone} - building codes apply")
         
         return factors
-    
+
     def _get_seismic_description(self, level: str) -> str:
         """Get seismic risk description"""
         descriptions = {
@@ -567,7 +594,7 @@ class ComprehensiveRiskAssessment:
             'low': 'Low seismic activity - basic seismic precautions sufficient'
         }
         return descriptions.get(level, 'Unknown risk level')
-    
+
     def _get_seismic_impact(self, level: str) -> str:
         """Get seismic impact description"""
         impacts = {
@@ -577,11 +604,11 @@ class ComprehensiveRiskAssessment:
             'low': 'Basic seismic provisions sufficient'
         }
         return impacts.get(level, 'Unknown impact')
-    
+
     # ========================================================================
     # DROUGHT RISK ASSESSMENT
     # ========================================================================
-    
+
     def _assess_drought_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Assess drought risk based on:
@@ -591,42 +618,45 @@ class ComprehensiveRiskAssessment:
         """
         
         try:
-            coords = geometry.centroid().coordinates().getInfo()
-            lat = coords[1] if coords and len(coords) > 1 else 36.0
+            # Get coordinates safely
+            _, lat = self._safe_get_coords(geometry, 5.41, 36.0)
             
             env = features.get('environmental', {})
-            ndvi = env.get('ndvi_avg', 0.5) or 0.5
+            ndvi = self._safe_get(env, 'ndvi_avg', 0.5)
             
             # Calculate drought risk (higher score = higher risk)
-            drought_score = 0
+            drought_score = 0.0
             
             # Latitude-based (Algeria): Southern = more arid
-            if lat < 32:  # Saharan region
-                drought_score += 60
-            elif lat < 34:  # Saharan Atlas
-                drought_score += 40
-            elif lat < 36:  # High Plateaus
-                drought_score += 25
+            if lat < 32.0:  # Saharan region
+                drought_score += 60.0
+            elif lat < 34.0:  # Saharan Atlas
+                drought_score += 40.0
+            elif lat < 36.0:  # High Plateaus
+                drought_score += 25.0
             else:  # Tell/Coastal
-                drought_score += 10
+                drought_score += 10.0
             
             # Vegetation health indicator
             if ndvi < 0.2:  # Very sparse vegetation
-                drought_score += 20
+                drought_score += 20.0
             elif ndvi < 0.4:  # Sparse vegetation
-                drought_score += 10
+                drought_score += 10.0
+            
+            # Ensure score doesn't exceed 100
+            drought_score = min(drought_score, 100.0)
             
             # Classify risk
-            if drought_score >= 70:
+            if drought_score >= 70.0:
                 level = 'very_high'
                 severity = 5
-            elif drought_score >= 50:
+            elif drought_score >= 50.0:
                 level = 'high'
                 severity = 4
-            elif drought_score >= 30:
+            elif drought_score >= 30.0:
                 level = 'medium'
                 severity = 3
-            elif drought_score >= 15:
+            elif drought_score >= 15.0:
                 level = 'low'
                 severity = 2
             else:
@@ -647,16 +677,16 @@ class ComprehensiveRiskAssessment:
         except Exception as e:
             print(f"Error assessing drought risk: {e}")
             return self._default_risk_assessment('drought')
-    
+
     def _get_drought_factors(self, lat: float, ndvi: float) -> List[str]:
         """Identify drought risk factors"""
         factors = []
         
-        if lat < 32:
+        if lat < 32.0:
             factors.append("Saharan region - extremely arid climate")
-        elif lat < 34:
+        elif lat < 34.0:
             factors.append("Semi-arid region - limited rainfall")
-        elif lat < 36:
+        elif lat < 36.0:
             factors.append("Moderate rainfall zone")
         else:
             factors.append("Coastal/northern region - adequate rainfall")
@@ -665,7 +695,7 @@ class ComprehensiveRiskAssessment:
             factors.append(f"Low vegetation: NDVI {ndvi:.2f} (water stress indicator)")
         
         return factors
-    
+
     def _get_drought_description(self, level: str) -> str:
         """Get drought risk description"""
         descriptions = {
@@ -676,7 +706,7 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Minimal drought risk - good water resources'
         }
         return descriptions.get(level, 'Unknown risk level')
-    
+
     def _get_drought_impact(self, level: str) -> str:
         """Get drought impact description"""
         impacts = {
@@ -687,11 +717,11 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Adequate water resources available'
         }
         return impacts.get(level, 'Unknown impact')
-    
+
     # ========================================================================
     # WILDFIRE RISK ASSESSMENT
     # ========================================================================
-    
+
     def _assess_wildfire_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Assess wildfire risk based on:
@@ -703,44 +733,48 @@ class ComprehensiveRiskAssessment:
         try:
             terrain = features.get('terrain', {})
             env = features.get('environmental', {})
-            coords = geometry.centroid().coordinates().getInfo()
-            lat = coords[1] if coords else 36.0
             
-            slope = terrain.get('slope_avg', 0) or 0
-            ndvi = env.get('ndvi_avg', 0.5) or 0.5
+            # Get coordinates safely
+            _, lat = self._safe_get_coords(geometry, 5.41, 36.0)
+            
+            slope = self._safe_get(terrain, 'slope_avg', 0.0)
+            ndvi = self._safe_get(env, 'ndvi_avg', 0.5)
             
             # Calculate wildfire risk
-            wildfire_score = 0
+            wildfire_score = 0.0
             
             # Vegetation density (fuel load)
             if 0.4 < ndvi < 0.7:  # Moderate vegetation = higher fire risk
-                wildfire_score += 30
+                wildfire_score += 30.0
             elif ndvi > 0.7:  # Dense vegetation
-                wildfire_score += 20
+                wildfire_score += 20.0
             elif ndvi < 0.2:  # Bare ground - low fuel
-                wildfire_score += 5
+                wildfire_score += 5.0
             
             # Slope (fire spreads faster uphill)
-            if slope > 20:
-                wildfire_score += 25
-            elif slope > 10:
-                wildfire_score += 15
+            if slope > 20.0:
+                wildfire_score += 25.0
+            elif slope > 10.0:
+                wildfire_score += 15.0
             
             # Climate zone (Northern Algeria more vegetated, higher risk)
-            if lat > 35:
-                wildfire_score += 20
+            if lat > 35.0:
+                wildfire_score += 20.0
+            
+            # Ensure score doesn't exceed 100
+            wildfire_score = min(wildfire_score, 100.0)
             
             # Classify risk
-            if wildfire_score >= 60:
+            if wildfire_score >= 60.0:
                 level = 'very_high'
                 severity = 5
-            elif wildfire_score >= 45:
+            elif wildfire_score >= 45.0:
                 level = 'high'
                 severity = 4
-            elif wildfire_score >= 30:
+            elif wildfire_score >= 30.0:
                 level = 'medium'
                 severity = 3
-            elif wildfire_score >= 15:
+            elif wildfire_score >= 15.0:
                 level = 'low'
                 severity = 2
             else:
@@ -761,7 +795,7 @@ class ComprehensiveRiskAssessment:
         except Exception as e:
             print(f"Error assessing wildfire risk: {e}")
             return self._default_risk_assessment('wildfire')
-    
+
     def _get_wildfire_factors(self, ndvi: float, slope: float) -> List[str]:
         """Identify wildfire risk factors"""
         factors = []
@@ -771,14 +805,14 @@ class ComprehensiveRiskAssessment:
         elif ndvi > 0.7:
             factors.append(f"Dense vegetation: NDVI {ndvi:.2f} (high fuel load)")
         
-        if slope > 15:
+        if slope > 15.0:
             factors.append(f"Steep slopes: {slope:.1f}° (fire spreads rapidly uphill)")
         
         if not factors:
             factors.append("Low wildfire risk conditions")
         
         return factors
-    
+
     def _get_wildfire_description(self, level: str) -> str:
         """Get wildfire risk description"""
         descriptions = {
@@ -789,7 +823,7 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Minimal wildfire risk'
         }
         return descriptions.get(level, 'Unknown risk level')
-    
+
     def _get_wildfire_impact(self, level: str) -> str:
         """Get wildfire impact description"""
         impacts = {
@@ -800,11 +834,11 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Negligible fire threat'
         }
         return impacts.get(level, 'Unknown impact')
-    
+
     # ========================================================================
     # SUBSIDENCE RISK ASSESSMENT
     # ========================================================================
-    
+
     def _assess_subsidence_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
         """
         Assess land subsidence risk based on:
@@ -822,28 +856,31 @@ class ComprehensiveRiskAssessment:
             # - Low elevation
             # - Flat terrain (possible soft sediments)
             
-            elevation = terrain.get('elevation_avg', 100) or 100
-            slope = terrain.get('slope_avg', 5) or 5
+            elevation = self._safe_get(terrain, 'elevation_avg', 100.0)
+            slope = self._safe_get(terrain, 'slope_avg', 5.0)
             
-            subsidence_score = 0
+            subsidence_score = 0.0
             
             # Very flat, low-lying areas
-            if elevation < 50 and slope < 2:
-                subsidence_score += 40
-            elif elevation < 100 and slope < 3:
-                subsidence_score += 20
+            if elevation < 50.0 and slope < 2.0:
+                subsidence_score += 40.0
+            elif elevation < 100.0 and slope < 3.0:
+                subsidence_score += 20.0
             
             # Add generic risk (would need soil data for better assessment)
-            subsidence_score += 10
+            subsidence_score += 10.0
+            
+            # Ensure score doesn't exceed 100
+            subsidence_score = min(subsidence_score, 100.0)
             
             # Classify risk
-            if subsidence_score >= 50:
+            if subsidence_score >= 50.0:
                 level = 'high'
                 severity = 4
-            elif subsidence_score >= 30:
+            elif subsidence_score >= 30.0:
                 level = 'medium'
                 severity = 3
-            elif subsidence_score >= 15:
+            elif subsidence_score >= 15.0:
                 level = 'low'
                 severity = 2
             else:
@@ -864,19 +901,19 @@ class ComprehensiveRiskAssessment:
         except Exception as e:
             print(f"Error assessing subsidence risk: {e}")
             return self._default_risk_assessment('subsidence')
-    
+
     def _get_subsidence_factors(self, elevation: float, slope: float) -> List[str]:
         """Identify subsidence risk factors"""
         factors = []
         
-        if elevation < 50 and slope < 2:
+        if elevation < 50.0 and slope < 2.0:
             factors.append(f"Low, flat area: {elevation:.0f}m elevation, {slope:.1f}° slope")
             factors.append("Possible soft sediments or high water table")
         else:
             factors.append("Terrain characteristics suggest low subsidence risk")
         
         return factors
-    
+
     def _get_subsidence_description(self, level: str) -> str:
         """Get subsidence risk description"""
         descriptions = {
@@ -886,7 +923,7 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Minimal subsidence risk'
         }
         return descriptions.get(level, 'Unknown risk level')
-    
+
     def _get_subsidence_impact(self, level: str) -> str:
         """Get subsidence impact description"""
         impacts = {
@@ -896,11 +933,11 @@ class ComprehensiveRiskAssessment:
             'very_low': 'Negligible subsidence expected'
         }
         return impacts.get(level, 'Unknown impact')
-    
+
     # ========================================================================
     # OVERALL RISK AGGREGATION
     # ========================================================================
-    
+
     def _calculate_overall_risk(self, risks: Dict) -> Dict:
         """Calculate overall risk profile"""
         
@@ -908,15 +945,28 @@ class ComprehensiveRiskAssessment:
         risk_types = ['flood', 'landslide', 'erosion', 'seismic', 'drought', 'wildfire', 'subsidence']
         
         # Calculate average severity
-        severities = [risks[rt]['severity'] for rt in risk_types if rt in risks]
-        avg_severity = np.mean(severities) if severities else 2
+        severities = []
+        for rt in risk_types:
+            if rt in risks and isinstance(risks[rt], dict):
+                severity = risks[rt].get('severity', 0)
+                if isinstance(severity, (int, float)) and severity > 0:
+                    severities.append(severity)
+        
+        avg_severity = np.mean(severities) if severities else 2.0
         
         # Count high and very high risks
-        high_risks = sum(1 for rt in risk_types if rt in risks and risks[rt]['severity'] >= 4)
-        medium_risks = sum(1 for rt in risk_types if rt in risks and risks[rt]['severity'] == 3)
+        high_risks = sum(1 for rt in risk_types 
+                        if rt in risks 
+                        and isinstance(risks[rt], dict)
+                        and risks[rt].get('severity', 0) >= 4)
+        
+        medium_risks = sum(1 for rt in risk_types 
+                          if rt in risks 
+                          and isinstance(risks[rt], dict)
+                          and risks[rt].get('severity', 0) == 3)
         
         # Determine overall level
-        if high_risks >= 3 or avg_severity >= 4:
+        if high_risks >= 3 or avg_severity >= 4.0:
             overall_level = 'very_high'
         elif high_risks >= 2 or avg_severity >= 3.5:
             overall_level = 'high'
@@ -934,7 +984,7 @@ class ComprehensiveRiskAssessment:
             'medium_risk_count': medium_risks,
             'total_risks_assessed': len(severities)
         }
-    
+
     def _generate_risk_summary(self, risks: Dict) -> List[str]:
         """Generate human-readable risk summary"""
         summary = []
@@ -942,8 +992,11 @@ class ComprehensiveRiskAssessment:
         # Identify major risks
         major_risks = []
         for risk_type in ['flood', 'landslide', 'erosion', 'seismic', 'drought', 'wildfire', 'subsidence']:
-            if risk_type in risks and risks[risk_type]['severity'] >= 4:
-                major_risks.append(f"{risk_type.title()}: {risks[risk_type]['level'].replace('_', ' ').title()}")
+            if risk_type in risks and isinstance(risks[risk_type], dict):
+                severity = risks[risk_type].get('severity', 0)
+                level = risks[risk_type].get('level', 'unknown')
+                if severity >= 4 and level != 'unknown':
+                    major_risks.append(f"{risk_type.title()}: {level.replace('_', ' ').title()}")
         
         if major_risks:
             summary.append(f"⚠️ **Major Risks Identified:** {', '.join(major_risks)}")
@@ -951,55 +1004,64 @@ class ComprehensiveRiskAssessment:
             summary.append("✅ **No major risks identified**")
         
         # Add overall assessment
-        overall = risks['overall']
-        summary.append(f"📊 **Overall Risk Level:** {overall['level'].replace('_', ' ').title()}")
-        summary.append(f"📈 **Average Risk Severity:** {overall['average_severity']:.1f}/5")
+        if 'overall' in risks and isinstance(risks['overall'], dict):
+            overall = risks['overall']
+            summary.append(f"📊 **Overall Risk Level:** {overall.get('level', 'unknown').replace('_', ' ').title()}")
+            summary.append(f"📈 **Average Risk Severity:** {overall.get('average_severity', 0):.1f}/5")
         
         return summary
-    
+
     def _generate_mitigation_recommendations(self, risks: Dict) -> List[str]:
         """Generate risk mitigation recommendations"""
         recommendations = []
         
         # Flood mitigation
-        if risks.get('flood', {}).get('severity', 0) >= 3:
+        if self._get_risk_severity(risks, 'flood') >= 3:
             recommendations.append("🌊 **Flood:** Install comprehensive drainage systems, consider flood insurance, elevate structures")
         
         # Landslide mitigation
-        if risks.get('landslide', {}).get('severity', 0) >= 3:
+        if self._get_risk_severity(risks, 'landslide') >= 3:
             recommendations.append("⛰️ **Landslide:** Implement slope stabilization, retaining walls, avoid construction on steep areas")
         
         # Erosion mitigation
-        if risks.get('erosion', {}).get('severity', 0) >= 3:
+        if self._get_risk_severity(risks, 'erosion') >= 3:
             recommendations.append("🌾 **Erosion:** Plant vegetation, install erosion control structures, terracing on slopes")
         
         # Seismic mitigation
-        if risks.get('seismic', {}).get('severity', 0) >= 3:
+        if self._get_risk_severity(risks, 'seismic') >= 3:
             recommendations.append("🏗️ **Seismic:** Follow seismic building codes, use flexible foundations, conduct soil analysis")
         
         # Drought mitigation
-        if risks.get('drought', {}).get('severity', 0) >= 3:
+        if self._get_risk_severity(risks, 'drought') >= 3:
             recommendations.append("💧 **Drought:** Install water storage systems, implement water conservation, consider drought-resistant landscaping")
         
         # Wildfire mitigation
-        if risks.get('wildfire', {}).get('severity', 0) >= 3:
+        if self._get_risk_severity(risks, 'wildfire') >= 3:
             recommendations.append("🔥 **Wildfire:** Create defensible space, use fire-resistant materials, maintain fire breaks")
         
         # Subsidence mitigation
-        if risks.get('subsidence', {}).get('severity', 0) >= 3:
+        if self._get_risk_severity(risks, 'subsidence') >= 3:
             recommendations.append("🏚️ **Subsidence:** Conduct soil investigation, use deep foundations, monitor for settling")
         
         if not recommendations:
             recommendations.append("✅ **No major mitigation required** - standard construction practices sufficient")
         
         return recommendations
-    
+
+    def _get_risk_severity(self, risks: Dict, risk_type: str) -> int:
+        """Safely get severity value for a risk type"""
+        if risk_type in risks and isinstance(risks[risk_type], dict):
+            severity = risks[risk_type].get('severity', 0)
+            if isinstance(severity, (int, float)):
+                return int(severity)
+        return 0
+
     def _default_risk_assessment(self, risk_type: str) -> Dict:
         """Return default risk assessment when data unavailable"""
         return {
             'level': 'unknown',
             'severity': 0,
-            'score': 0,
+            'score': 0.0,
             'primary_factors': ['Data unavailable'],
             'description': 'Risk assessment unavailable - data not accessible',
             'impact': 'Unknown - professional assessment recommended'
