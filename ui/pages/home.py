@@ -11,7 +11,7 @@ def render():
     st.markdown("""
         <div style='text-align: center; padding: 3rem 0;'>
             <h1 style='font-size: 3rem; margin-bottom: 1rem;'>
-                🌍 Land Evaluation AI
+                🌍 LandSense
             </h1>
             <p style='font-size: 1.5rem; color: #666; margin-bottom: 2rem;'>
                 AI-powered land analysis for real estate professionals
@@ -143,3 +143,4 @@ def render():
         - 🗺️ **Heatmap shows 3 premium zones for building**
         - ⚠️ Minor flood risk in 5% of area
         """)
+
