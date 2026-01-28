@@ -85,12 +85,12 @@ class ComprehensiveRiskAssessment:
         try:
             # Get water occurrence from JRC dataset
             water_data = self.gee_client.get_water_occurrence(geometry)
-            water_occurrence = water_data.get('water_occurrence_avg', 0)
+            water_occurrence = water_data.get('water_occurrence_avg', 0) or 0
             
             # Get terrain data
             terrain = features.get('terrain', {})
-            slope = terrain.get('slope_avg', 5)
-            elevation = terrain.get('elevation_avg', 100)
+            slope = terrain.get('slope_avg', 5) or 5
+            elevation = terrain.get('elevation_avg', 100) or 100
             
             # Calculate flood risk score (0-100)
             flood_score = 0
@@ -195,10 +195,12 @@ class ComprehensiveRiskAssessment:
             terrain = features.get('terrain', {})
             env = features.get('environmental', {})
             
-            slope_avg = terrain.get('slope_avg', 0)
-            slope_max = terrain.get('slope_max', 0)
-            elevation_range = terrain.get('elevation_max', 0) - terrain.get('elevation_min', 0)
-            ndvi = env.get('ndvi_avg', 0.5)
+            slope_avg = terrain.get('slope_avg', 0) or 0
+            slope_max = terrain.get('slope_max', 0) or 0
+            elevation_max = terrain.get('elevation_max', 0) or 0
+            elevation_min = terrain.get('elevation_min', 0) or 0
+            elevation_range = elevation_max - elevation_min
+            ndvi = env.get('ndvi_avg', 0.5) or 0.5
             
             # Calculate landslide risk score
             landslide_score = 0
@@ -321,8 +323,8 @@ class ComprehensiveRiskAssessment:
             terrain = features.get('terrain', {})
             env = features.get('environmental', {})
             
-            slope = terrain.get('slope_avg', 0)
-            ndvi = env.get('ndvi_avg', 0.5)
+            slope = terrain.get('slope_avg', 0) or 0
+            ndvi = env.get('ndvi_avg', 0.5) or 0.5
             
             # Calculate erosion risk score
             erosion_score = 0
@@ -649,10 +651,10 @@ class ComprehensiveRiskAssessment:
             terrain = features.get('terrain', {})
             env = features.get('environmental', {})
             coords = geometry.centroid().coordinates().getInfo()
-            lat = coords[1]
+            lat = coords[1] if coords else 36.0
             
-            slope = terrain.get('slope_avg', 0)
-            ndvi = env.get('ndvi_avg', 0.5)
+            slope = terrain.get('slope_avg', 0) or 0
+            ndvi = env.get('ndvi_avg', 0.5) or 0.5
             
             # Calculate wildfire risk
             wildfire_score = 0
@@ -767,8 +769,8 @@ class ComprehensiveRiskAssessment:
             # - Low elevation
             # - Flat terrain (possible soft sediments)
             
-            elevation = terrain.get('elevation_avg', 100)
-            slope = terrain.get('slope_avg', 5)
+            elevation = terrain.get('elevation_avg', 100) or 100
+            slope = terrain.get('slope_avg', 5) or 5
             
             subsidence_score = 0
             
