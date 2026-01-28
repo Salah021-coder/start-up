@@ -358,23 +358,25 @@ def _get_severity_color(severity: int) -> str:
 
 def render_summary_metrics(results):
     """Render summary metrics"""
-    
-    with st.info("📈 Summary Metrics"):
+
+    st.info("📈 Summary Metrics")
+
+    with st.container():
         col1, col2, col3, col4 = st.columns(4)
-        
+
         with col1:
             score = results.get('overall_score', 0)
             delta = f"+{(score-5):.1f}" if score > 5 else f"{(score-5):.1f}"
             st.metric("Overall Score", f"{score:.1f}/10", delta=delta)
-        
+
         with col2:
             confidence = results.get('confidence_level', 0) * 100
             st.metric("Confidence", f"{confidence:.0f}%")
-        
+
         with col3:
             risk = results.get('risk_assessment', {}).get('level', 'medium')
             st.metric("Risk Level", risk.title())
-        
+
         with col4:
             area = results.get('boundary', {}).get('area_hectares', 0)
             st.metric("Area", f"{area:.2f} ha")
@@ -651,6 +653,7 @@ def render_export_options(results):
                 file_name="boundary.geojson",
                 mime="application/json"
             )
+
 
 
 
