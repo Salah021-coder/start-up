@@ -9,6 +9,7 @@ import folium
 from streamlit_folium import st_folium
 from folium.plugins import HeatMap
 import numpy as np
+from typing import Dict
 
 
 def render():
