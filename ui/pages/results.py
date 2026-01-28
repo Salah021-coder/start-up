@@ -49,7 +49,7 @@ def render():
     # Summary metrics
     render_summary_metrics(results)
     
-    st.info("---")
+    st.markdown("---")
     
     # === NEW: COMPREHENSIVE RISK ASSESSMENT SECTION ===
     render_comprehensive_risk_section(results)
@@ -650,3 +650,4 @@ def render_export_options(results):
                 file_name="boundary.geojson",
                 mime="application/json"
             )
+
