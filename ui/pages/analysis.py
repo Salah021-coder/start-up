@@ -234,9 +234,9 @@ def render_file_upload():
             # Show metrics
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Area", f"{boundary_data['area_hectares']:.2f} ha")
+                metric_card("Area", f"{boundary_data['area_hectares']:.2f} ha")
             with col2:
-                st.metric("Perimeter", f"{boundary_data['perimeter_m']:.0f} m")
+                metric_card("Perimeter", f"{boundary_data['perimeter_m']:.0f} m")
             
         except Exception as e:
             st.error(f"❌ Error loading file: {str(e)}")
@@ -333,3 +333,4 @@ def run_analysis():
         st.error(f"❌ Analysis failed: {str(e)}")
 
         st.info("Please try again or contact support if the problem persists.")
+
