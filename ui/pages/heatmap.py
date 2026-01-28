@@ -128,7 +128,7 @@ def render_heatmap_results(results):
     """Render heatmap analysis results"""
     
     st.markdown("---")
-    st.markdown("## 📊 Analysis Results")
+    st.info("## 📊 Analysis Results")
     
     # Statistics
     stats = results['statistics']
