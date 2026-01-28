@@ -31,6 +31,35 @@ def render():
     else:
         render_sample_boundary()
 
+def metric_card(title, value, delta=None):
+    delta_html = ""
+    if delta is not None:
+        color = "#22c55e" if delta.startswith("+") else "#ef4444"
+        delta_html = f"""
+        <div style="margin-top:6px;font-size:14px;color:{color};font-weight:600;">
+            {delta}
+        </div>
+        """
+
+    st.markdown(
+        f"""
+        <div style="
+            background:#020617;
+            border:1px solid #1e293b;
+            border-radius:14px;
+            padding:18px;
+            height:120px;
+        ">
+            <div style="color:#94a3b8;font-size:13px;">{title}</div>
+            <div style="color:white;font-size:34px;font-weight:700;margin-top:6px;">
+                {value}
+            </div>
+            {delta_html}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 
 def render_interactive_map():
     """Render FULLY INTERACTIVE map with drawing"""
@@ -109,11 +138,11 @@ def render_interactive_map():
                         # Display boundary info
                         col1, col2, col3 = st.columns(3)
                         with col1:
-                            st.metric("Area", f"{boundary_data['area_hectares']:.2f} ha")
+                            metric_card("Area", f"{boundary_data['area_hectares']:.2f} ha")
                         with col2:
-                            st.metric("Area", f"{boundary_data['area_acres']:.2f} acres")
+                            metric_card("Area", f"{boundary_data['area_acres']:.2f} acres")
                         with col3:
-                            st.metric("Perimeter", f"{boundary_data['perimeter_m']:.0f} m")
+                            metric_card("Perimeter", f"{boundary_data['perimeter_m']:.0f} m")
                         
                     except Exception as e:
                         st.error(f"Error creating boundary: {str(e)}")
@@ -302,4 +331,5 @@ def run_analysis():
         
     except Exception as e:
         st.error(f"❌ Analysis failed: {str(e)}")
+
         st.info("Please try again or contact support if the problem persists.")
