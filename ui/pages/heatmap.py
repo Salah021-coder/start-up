@@ -128,25 +128,25 @@ def render_heatmap_results(results):
     """Render heatmap analysis results"""
     
     st.markdown("---")
-    st.info("## 📊 Analysis Results")
     
-    # Statistics
-    stats = results['statistics']
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        st.metric("Points Analyzed", stats['total_points'])
-    
-    with col2:
-        st.metric("Average Score", f"{stats['avg_score']:.1f}/10")
-    
-    with col3:
-        st.metric("Best Score", f"{stats['max_score']:.1f}/10")
-    
-    with col4:
-        excellent_pct = (stats['excellent_count'] / stats['total_points']) * 100
-        st.metric("Excellent Areas", f"{excellent_pct:.0f}%")
+    with st.info("📊 Analysis Results"):
+        stats = results['statistics']
+        
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Points Analyzed", stats['total_points'])
+        
+        with col2:
+            st.metric("Average Score", f"{stats['avg_score']:.1f}/10")
+        
+        with col3:
+            st.metric("Best Score", f"{stats['max_score']:.1f}/10")
+        
+        with col4:
+            excellent_pct = (stats['excellent_count'] / stats['total_points']) * 100
+            st.metric("Excellent Areas", f"{excellent_pct:.0f}%")
+
     
     # Heatmap
     st.markdown("### 🗺️ Suitability Heatmap")
