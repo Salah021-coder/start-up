@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: app.py (UPDATED WITH PROPER EE INITIALIZATION)
+# FILE: app.py (CORRECTED - REMOVED NON-EXISTENT IMPORT)
 # ============================================================================
 
 import streamlit as st
@@ -14,31 +14,32 @@ sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 # Page configuration
 st.set_page_config(
-    page_title="Land Evaluation AI",
+    page_title="LandSense",
     page_icon="🌍",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# Initialize Earth Engine on startup (only once)
+# Initialize Earth Engine on startup
 @st.cache_resource
 def init_earth_engine():
-    """Initialize Earth Engine (cached to run only once)"""
-    print("\n" + "="*60)
-    print("Initializing Earth Engine...")
-    print("="*60)
-    result = EarthEngineManager.initialize()
-    if result:
-        print("✅ Earth Engine is ready!")
-    else:
-        print("❌ Earth Engine initialization failed")
-    print("="*60 + "\n")
-    return result
+    """Initialize Earth Engine (cached)"""
+    return EarthEngineManager.initialize()
 
 # Try to initialize EE
 ee_available = init_earth_engine()
 
-# Load custom CSS
+# Show warning if EE not available
+if not ee_available:
+    st.warning("""
+        ⚠️ **Google Earth Engine not configured**
+        
+        Some features may have limited functionality. To enable full analysis:
+        1. Configure GEE_SERVICE_ACCOUNT_JSON in Streamlit secrets
+        2. Or authenticate locally: `earthengine authenticate`
+    """)
+
+# Custom CSS
 css_path = 'ui/styles/custom.css'
 if os.path.exists(css_path):
     with open(css_path) as f:
@@ -60,51 +61,12 @@ def initialize_session_state():
         st.session_state.chat_initialized = False
     if 'ee_available' not in st.session_state:
         st.session_state.ee_available = ee_available
+    if 'heatmap_results' not in st.session_state:
+        st.session_state.heatmap_results = None
 
 def main():
     """Main application logic"""
     initialize_session_state()
-    
-    # Show EE status warning if not available
-    if not st.session_state.ee_available:
-        st.error("""
-            ❌ **Google Earth Engine Not Configured**
-            
-            Earth Engine is required for land analysis. Please follow these steps:
-            
-            1. **Install**: `pip install earthengine-api`
-            2. **Authenticate**: `earthengine authenticate`
-            3. **Restart** this app
-            
-            The app will work with limited functionality until Earth Engine is configured.
-        """)
-        
-        with st.expander("📖 Detailed Setup Instructions"):
-            st.markdown("""
-            ### Step-by-Step Setup:
-            
-            **1. Open Terminal/Command Prompt:**
-```bash
-            cd F:\\VS_CODE\\startup_app\\land-evaluation-mvp
-            venv\\Scripts\\activate
-```
-            
-            **2. Install Earth Engine:**
-```bash
-            pip install earthengine-api
-```
-            
-            **3. Authenticate (this opens your browser):**
-```bash
-            earthengine authenticate
-```
-            
-            **4. Sign in** with your Google account
-            
-            **5. Restart** this Streamlit app
-            
-            **6. Test** by running: `python test_ee.py`
-            """)
     
     # Render chatbot in sidebar (always available)
     render_chatbot(st.session_state.analysis_results)
@@ -122,24 +84,29 @@ def main():
             st.session_state.current_page = 'analysis'
             st.rerun()
         
+        # Show results button if analysis exists
         if st.session_state.analysis_results:
             if st.button("📊 View Results", use_container_width=True):
                 st.session_state.current_page = 'results'
+                st.rerun()
+        
+        # NEW: Heatmap button
+        if st.session_state.boundary_data:
+            if st.button("🗺️ Suitability Heatmap", use_container_width=True, 
+                        help="Find the best locations within your area"):
+                st.session_state.current_page = 'heatmap'
                 st.rerun()
         
         if st.button("📜 History", use_container_width=True):
             st.session_state.current_page = 'history'
             st.rerun()
         
-        # Show EE status indicator
+        # Show EE status
         st.markdown("---")
-        st.markdown("### 🛰️ Earth Engine")
         if st.session_state.ee_available:
-            st.success("✅ Connected")
+            st.success("✅ Earth Engine Ready")
         else:
-            st.error("❌ Not Configured")
-            if st.button("📖 Setup Guide", use_container_width=True):
-                st.session_state.show_ee_guide = True
+            st.error("❌ Earth Engine Offline")
     
     # Render current page
     if st.session_state.current_page == 'home':
@@ -148,6 +115,10 @@ def main():
         analysis.render()
     elif st.session_state.current_page == 'results':
         results.render()
+    elif st.session_state.current_page == 'heatmap':
+        # Import heatmap page
+        from ui.pages import heatmap
+        heatmap.render()
     elif st.session_state.current_page == 'history':
         history.render()
 
