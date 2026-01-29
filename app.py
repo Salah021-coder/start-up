@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: app.py (FIXED VERSION)
+# FILE: app.py (CORRECTED - REMOVED NON-EXISTENT IMPORT)
 # ============================================================================
 
 import streamlit as st
@@ -90,7 +90,7 @@ def main():
                 st.session_state.current_page = 'results'
                 st.rerun()
         
-        # Heatmap button
+        # NEW: Heatmap button
         if st.session_state.boundary_data:
             if st.button("🗺️ Suitability Heatmap", use_container_width=True, 
                         help="Find the best locations within your area"):
@@ -116,6 +116,7 @@ def main():
     elif st.session_state.current_page == 'results':
         results.render()
     elif st.session_state.current_page == 'heatmap':
+        # Import heatmap page
         from ui.pages import heatmap
         heatmap.render()
     elif st.session_state.current_page == 'history':
