@@ -1,1068 +1,1202 @@
-============================================================================
-FILE: data/feature_extraction/risk_assessment.py (FIXED)
-============================================================================
-import ee
+# ============================================================================
+# FILE: ui/pages/risk_analysis.py
+# Dedicated Risk Assessment Page
+# ============================================================================
+
+import streamlit as st
+import plotly.graph_objects as go
+import plotly.express as px
+import pandas as pd
+import folium
+from streamlit_folium import st_folium
 from typing import Dict, List
-from data.earth_engine.gee_client import GEEClient
 import numpy as np
 
-class ComprehensiveRiskAssessment:
-    """
-    Comprehensive risk assessment for land evaluation
-    Evaluates multiple risk types:
-    - Flood risk
-    - Landslide risk
-    - Erosion risk
-    - Seismic risk
-    - Drought risk
-    - Wildfire risk
-    - Subsidence risk
-    """
-    def __init__(self):
-        self.gee_client = GEEClient()
 
-    @staticmethod
-    def _safe_get(dictionary: Dict, key: str, default=0.0):
-        """Safely get a numeric value from dictionary, ensuring it's not None and is float-compatible"""
-        if not isinstance(dictionary, dict):
-            return float(default)
+def render():
+    """Render dedicated risk assessment page"""
+    
+    st.title("🛡️ Comprehensive Risk Assessment")
+    
+    # Check if analysis results exist
+    if not st.session_state.get('analysis_results'):
+        st.warning("⚠️ No analysis results available. Please run an analysis first.")
+        if st.button("Start New Analysis"):
+            st.session_state.current_page = 'analysis'
+            st.rerun()
+        return
+    
+    results = st.session_state.analysis_results
+    features = results.get('features', {})
+    env = features.get('environmental', {})
+    comprehensive_risks = env.get('comprehensive_risks', {})
+    
+    if not comprehensive_risks:
+        st.warning("""
+        ⚠️ **Comprehensive Risk Assessment Not Available**
         
-        value = dictionary.get(key, default)
-        if value is None:
-            return float(default)
+        This analysis was performed without Google Earth Engine access.
+        Only basic risk assessment is available.
         
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return float(default)
+        To access comprehensive risk assessment (7 risk types):
+        - Configure Google Earth Engine credentials
+        - Re-run the analysis
+        """)
+        return
+    
+    # Navigation tabs
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📊 Overview", 
+        "🔍 Detailed Risks", 
+        "🗺️ Risk Map",
+        "🛠️ Mitigation",
+        "📈 Comparison"
+    ])
+    
+    with tab1:
+        render_risk_overview(comprehensive_risks, results)
+    
+    with tab2:
+        render_detailed_risks(comprehensive_risks)
+    
+    with tab3:
+        render_risk_map(comprehensive_risks, results)
+    
+    with tab4:
+        render_mitigation_strategies(comprehensive_risks)
+    
+    with tab5:
+        render_risk_comparison(comprehensive_risks)
 
-    @staticmethod
-    def _safe_get_coords(geometry: ee.Geometry, default_lon=5.41, default_lat=36.19):
-        """Safely extract coordinates from geometry with robust error handling"""
-        try:
-            coords = geometry.centroid().coordinates().getInfo()
-            if isinstance(coords, list) and len(coords) >= 2:
-                try:
-                    lon = float(coords[0])
-                except (TypeError, ValueError, IndexError):
-                    lon = float(default_lon)
+
+# ============================================================================
+# TAB 1: OVERVIEW
+# ============================================================================
+
+def render_risk_overview(risks: Dict, results: Dict):
+    """Render risk overview dashboard"""
+    
+    st.markdown("## 📊 Risk Profile Summary")
+    
+    overall = risks.get('overall', {})
+    
+    # Top metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        level = overall.get('level', 'unknown')
+        color = get_risk_color(level)
+        st.markdown(f"""
+        <div style='background-color:{color};padding:25px;border-radius:12px;text-align:center;'>
+            <h2 style='color:white;margin:0;font-size:28px;'>{level.replace('_', ' ').title()}</h2>
+            <p style='color:white;margin:8px 0 0 0;font-size:14px;'>Overall Risk Level</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        avg_severity = overall.get('average_severity', 0)
+        st.metric(
+            "Average Severity",
+            f"{avg_severity:.1f}/5",
+            help="Average across all 7 risk types"
+        )
+        st.progress(avg_severity / 5)
+    
+    with col3:
+        high_count = overall.get('high_risk_count', 0)
+        st.metric(
+            "Critical Risks",
+            high_count,
+            delta="Requires Immediate Attention" if high_count > 0 else "None",
+            delta_color="inverse"
+        )
+    
+    with col4:
+        medium_count = overall.get('medium_risk_count', 0)
+        st.metric(
+            "Moderate Risks",
+            medium_count,
+            delta="Planning Required" if medium_count > 0 else "None",
+            delta_color="inverse"
+        )
+    
+    st.markdown("---")
+    
+    # Summary text
+    summary = risks.get('summary', [])
+    if summary:
+        st.markdown("### 📋 Executive Summary")
+        for line in summary:
+            st.markdown(line)
+    
+    st.markdown("---")
+    
+    # Risk matrix visualization
+    st.markdown("### 🎯 Risk Matrix")
+    render_risk_matrix(risks)
+    
+    st.markdown("---")
+    
+    # Quick risk cards
+    st.markdown("### 🔍 Risk Type Overview")
+    
+    risk_types = [
+        ('flood', '🌊', 'Flood'),
+        ('landslide', '⛰️', 'Landslide'),
+        ('erosion', '🌾', 'Erosion'),
+        ('seismic', '🏗️', 'Seismic'),
+        ('drought', '💧', 'Drought'),
+        ('wildfire', '🔥', 'Wildfire'),
+        ('subsidence', '🏚️', 'Subsidence')
+    ]
+    
+    col1, col2, col3, col4 = st.columns(4)
+    cols = [col1, col2, col3, col4]
+    
+    for idx, (risk_key, emoji, name) in enumerate(risk_types):
+        risk_data = risks.get(risk_key, {})
+        if risk_data:
+            with cols[idx % 4]:
+                render_risk_quick_card(emoji, name, risk_data)
+    
+    st.markdown("---")
+    
+    # Development impact assessment
+    st.markdown("### 💰 Development Impact Assessment")
+    render_development_impact(risks, results)
+
+
+def render_risk_matrix(risks: Dict):
+    """Render risk probability vs impact matrix"""
+    
+    risk_types = {
+        'flood': '🌊 Flood',
+        'landslide': '⛰️ Landslide',
+        'erosion': '🌾 Erosion',
+        'seismic': '🏗️ Seismic',
+        'drought': '💧 Drought',
+        'wildfire': '🔥 Wildfire',
+        'subsidence': '🏚️ Subsidence'
+    }
+    
+    # Create data for matrix
+    matrix_data = []
+    
+    for risk_key, risk_name in risk_types.items():
+        risk_data = risks.get(risk_key, {})
+        if risk_data and risk_data.get('level') != 'unknown':
+            severity = risk_data.get('severity', 0)
+            score = risk_data.get('score', 0)
+            
+            # Probability (based on score)
+            probability = score / 20  # 0-5 scale
+            
+            # Impact (severity)
+            impact = severity
+            
+            matrix_data.append({
+                'Risk Type': risk_name,
+                'Probability': probability,
+                'Impact': impact,
+                'Severity': severity
+            })
+    
+    if not matrix_data:
+        st.info("No risk data available for matrix")
+        return
+    
+    df = pd.DataFrame(matrix_data)
+    
+    # Create scatter plot
+    fig = px.scatter(
+        df,
+        x='Probability',
+        y='Impact',
+        size='Severity',
+        color='Severity',
+        text='Risk Type',
+        title='Risk Probability vs Impact Matrix',
+        labels={
+            'Probability': 'Probability (0-5)',
+            'Impact': 'Impact (0-5)'
+        },
+        color_continuous_scale=['green', 'yellow', 'orange', 'red'],
+        size_max=40
+    )
+    
+    # Add quadrant lines
+    fig.add_hline(y=2.5, line_dash="dash", line_color="gray", opacity=0.5)
+    fig.add_vline(x=2.5, line_dash="dash", line_color="gray", opacity=0.5)
+    
+    # Add quadrant labels
+    fig.add_annotation(x=1.25, y=4.5, text="Low Probability<br>High Impact", showarrow=False, opacity=0.3)
+    fig.add_annotation(x=3.75, y=4.5, text="High Probability<br>High Impact", showarrow=False, opacity=0.3)
+    fig.add_annotation(x=1.25, y=1.25, text="Low Probability<br>Low Impact", showarrow=False, opacity=0.3)
+    fig.add_annotation(x=3.75, y=1.25, text="High Probability<br>Low Impact", showarrow=False, opacity=0.3)
+    
+    fig.update_traces(textposition='top center')
+    fig.update_layout(height=500, xaxis_range=[0, 5], yaxis_range=[0, 5])
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+
+def render_risk_quick_card(emoji: str, name: str, risk_data: Dict):
+    """Render quick risk card"""
+    
+    level = risk_data.get('level', 'unknown')
+    severity = risk_data.get('severity', 0)
+    color = get_severity_color(severity)
+    
+    st.markdown(f"""
+    <div style='background-color:{color};padding:15px;border-radius:10px;text-align:center;margin-bottom:10px;'>
+        <p style='font-size:30px;margin:0;'>{emoji}</p>
+        <p style='font-weight:bold;margin:8px 0 5px 0;font-size:16px;'>{name}</p>
+        <p style='margin:0;font-size:13px;'>{level.replace('_', ' ').title()}</p>
+        <p style='margin:5px 0 0 0;font-size:20px;font-weight:bold;'>{severity}/5</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def render_development_impact(risks: Dict, results: Dict):
+    """Render development cost and timeline impact"""
+    
+    overall = risks.get('overall', {})
+    high_count = overall.get('high_risk_count', 0)
+    medium_count = overall.get('medium_risk_count', 0)
+    
+    # Calculate impact multipliers
+    cost_multiplier = 1.0 + (high_count * 0.25) + (medium_count * 0.10)
+    time_multiplier = 1.0 + (high_count * 0.20) + (medium_count * 0.08)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric(
+            "Cost Impact",
+            f"+{(cost_multiplier - 1) * 100:.0f}%",
+            delta="Above baseline",
+            delta_color="inverse",
+            help="Estimated increase in development costs due to risk mitigation"
+        )
+    
+    with col2:
+        st.metric(
+            "Timeline Impact",
+            f"+{(time_multiplier - 1) * 100:.0f}%",
+            delta="Additional time",
+            delta_color="inverse",
+            help="Estimated increase in project timeline due to risk assessment and mitigation"
+        )
+    
+    with col3:
+        insurance_level = "High" if high_count >= 2 else "Moderate" if medium_count >= 2 else "Standard"
+        st.metric(
+            "Insurance Requirement",
+            insurance_level,
+            help="Recommended insurance coverage level"
+        )
+    
+    # Detailed breakdown
+    with st.expander("📊 View Detailed Cost Breakdown"):
+        st.markdown(f"""
+        **Base Development Cost:** 100%
+        
+        **Risk Mitigation Costs:**
+        - High-severity risks: +{high_count * 25}% ({high_count} × 25%)
+        - Medium-severity risks: +{medium_count * 10}% ({medium_count} × 10%)
+        
+        **Total Estimated Cost:** {cost_multiplier * 100:.0f}%
+        
+        **Additional Time Required:**
+        - Risk assessments and studies: +{high_count * 10}%
+        - Mitigation implementation: +{(high_count + medium_count) * 5}%
+        - Regulatory approvals: +{high_count * 5}%
+        
+        **Total Timeline Extension:** {time_multiplier * 100:.0f}%
+        
+        *Note: These are rough estimates. Actual costs depend on specific mitigation strategies.*
+        """)
+
+
+# ============================================================================
+# TAB 2: DETAILED RISKS
+# ============================================================================
+
+def render_detailed_risks(risks: Dict):
+    """Render detailed risk analysis for each type"""
+    
+    st.markdown("## 🔍 Detailed Risk Analysis")
+    
+    risk_types = [
+        ('flood', '🌊', 'Flood Risk'),
+        ('landslide', '⛰️', 'Landslide Risk'),
+        ('erosion', '🌾', 'Erosion Risk'),
+        ('seismic', '🏗️', 'Seismic Risk'),
+        ('drought', '💧', 'Drought Risk'),
+        ('wildfire', '🔥', 'Wildfire Risk'),
+        ('subsidence', '🏚️', 'Subsidence Risk')
+    ]
+    
+    for risk_key, emoji, title in risk_types:
+        risk_data = risks.get(risk_key, {})
+        
+        if not risk_data or risk_data.get('level') == 'unknown':
+            continue
+        
+        severity = risk_data.get('severity', 0)
+        level = risk_data.get('level', 'unknown')
+        
+        # Expand high-risk items by default
+        expanded = severity >= 4
+        
+        with st.expander(f"{emoji} **{title}** - {level.replace('_', ' ').title()}", expanded=expanded):
+            render_detailed_risk_card(risk_data, emoji, title, risk_key)
+    
+    st.markdown("---")
+    
+    # Severity comparison chart
+    st.markdown("### 📊 Risk Severity Comparison")
+    render_risk_severity_chart(risks, risk_types)
+
+
+def render_detailed_risk_card(risk_data: Dict, emoji: str, title: str, risk_key: str):
+    """Render detailed information for a specific risk"""
+    
+    severity = risk_data.get('severity', 0)
+    score = risk_data.get('score', 0)
+    level = risk_data.get('level', 'unknown')
+    description = risk_data.get('description', 'No description available')
+    factors = risk_data.get('primary_factors', [])
+    impact = risk_data.get('impact', 'Impact unknown')
+    
+    # Header with severity and score
+    col1, col2, col3 = st.columns([1, 2, 2])
+    
+    with col1:
+        color = get_severity_color(severity)
+        st.markdown(f"""
+        <div style='background-color:{color};padding:20px;border-radius:10px;text-align:center;'>
+            <h2 style='color:white;margin:0;font-size:36px;'>{severity}/5</h2>
+            <p style='color:white;margin:8px 0 0 0;font-size:13px;'>Severity</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"**Risk Level:** {level.replace('_', ' ').title()}")
+        st.markdown(f"**Risk Score:** {score:.1f}/100")
+        st.progress(min(score / 100, 1.0))
+    
+    with col3:
+        # Risk-specific metrics
+        render_risk_specific_metrics(risk_data, risk_key)
+    
+    st.markdown("---")
+    
+    # Description
+    st.markdown(f"### 📝 Description")
+    st.info(description)
+    
+    # Primary factors
+    if factors:
+        st.markdown("### 🔍 Key Contributing Factors")
+        for factor in factors:
+            st.markdown(f"• {factor}")
+    
+    # Impact
+    st.markdown("### ⚠️ Potential Impact")
+    st.warning(impact)
+    
+    # Risk-specific visualizations
+    st.markdown("---")
+    render_risk_specific_visualization(risk_data, risk_key)
+
+
+def render_risk_specific_metrics(risk_data: Dict, risk_key: str):
+    """Render risk-specific metrics"""
+    
+    if risk_key == 'flood':
+        water_occ = risk_data.get('water_occurrence', 0)
+        st.metric("Water Occurrence", f"{water_occ:.0f}%")
+    
+    elif risk_key == 'landslide':
+        slope_max = risk_data.get('slope_max', 0)
+        st.metric("Max Slope", f"{slope_max:.1f}°")
+    
+    elif risk_key == 'erosion':
+        slope = risk_data.get('slope', 0)
+        st.metric("Avg Slope", f"{slope:.1f}°")
+    
+    elif risk_key == 'seismic':
+        zone = risk_data.get('seismic_zone', 'Unknown')
+        st.metric("Seismic Zone", zone)
+    
+    elif risk_key == 'drought':
+        veg_health = risk_data.get('vegetation_health', 0)
+        st.metric("Vegetation Health", f"{veg_health:.2f}")
+    
+    elif risk_key == 'wildfire':
+        veg_density = risk_data.get('vegetation_density', 0)
+        st.metric("Vegetation Density", f"{veg_density:.2f}")
+    
+    elif risk_key == 'subsidence':
+        elevation = risk_data.get('elevation', 0)
+        st.metric("Elevation", f"{elevation:.0f}m")
+
+
+def render_risk_specific_visualization(risk_data: Dict, risk_key: str):
+    """Render risk-specific visualizations"""
+    
+    st.markdown("### 📈 Risk Analysis")
+    
+    if risk_key == 'flood':
+        # Flood risk breakdown
+        water_occ = risk_data.get('water_occurrence', 0)
+        
+        fig = go.Figure(data=[
+            go.Bar(
+                x=['Water Occurrence', 'Drainage', 'Elevation'],
+                y=[water_occ, max(0, 100 - water_occ), 50],
+                marker_color=['#1e88e5', '#43a047', '#fb8c00']
+            )
+        ])
+        fig.update_layout(
+            title='Flood Risk Factors',
+            yaxis_title='Contribution (%)',
+            height=300
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    
+    elif risk_key == 'landslide':
+        # Landslide risk factors
+        slope_avg = risk_data.get('slope_avg', 0)
+        slope_max = risk_data.get('slope_max', 0)
+        
+        fig = go.Figure(data=[
+            go.Indicator(
+                mode="gauge+number",
+                value=slope_max,
+                title={'text': "Maximum Slope (°)"},
+                gauge={
+                    'axis': {'range': [None, 50]},
+                    'bar': {'color': "red"},
+                    'steps': [
+                        {'range': [0, 15], 'color': "lightgreen"},
+                        {'range': [15, 30], 'color': "yellow"},
+                        {'range': [30, 50], 'color': "orange"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "red", 'width': 4},
+                        'thickness': 0.75,
+                        'value': slope_max
+                    }
+                }
+            )
+        ])
+        fig.update_layout(height=300)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    elif risk_key == 'seismic':
+        # Seismic zone map (placeholder)
+        zone = risk_data.get('seismic_zone', 'Unknown')
+        lat = risk_data.get('latitude', 36.19)
+        
+        st.markdown(f"""
+        **Seismic Zone:** {zone}
+        
+        **Building Code Requirements:**
+        - Seismic-resistant design mandatory
+        - Special foundation requirements
+        - Reinforced concrete specifications
+        - Regular structural inspections
+        
+        **Location:** Latitude {lat:.2f}°
+        """)
+
+
+def render_risk_severity_chart(risks: Dict, risk_types: list):
+    """Render horizontal bar chart comparing all risk severities"""
+    
+    risk_names = []
+    severities = []
+    scores = []
+    colors = []
+    
+    for risk_key, emoji, title in risk_types:
+        risk_data = risks.get(risk_key, {})
+        
+        if risk_data and risk_data.get('level') != 'unknown':
+            risk_names.append(f"{emoji} {title.replace(' Risk', '')}")
+            severity = risk_data.get('severity', 0)
+            severities.append(severity)
+            scores.append(risk_data.get('score', 0))
+            colors.append(get_severity_color(severity))
+    
+    if not severities:
+        st.info("No risk data available for chart")
+        return
+    
+    # Create horizontal bar chart
+    fig = go.Figure(data=[
+        go.Bar(
+            y=risk_names,
+            x=severities,
+            orientation='h',
+            marker=dict(color=colors),
+            text=[f"{s}/5 (Score: {scores[i]:.0f})" for i, s in enumerate(severities)],
+            textposition='auto',
+        )
+    ])
+    
+    fig.update_layout(
+        title="Risk Severity Levels (0-5 scale)",
+        xaxis_title="Severity Level",
+        height=400,
+        showlegend=False,
+        xaxis=dict(range=[0, 5])
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+
+
+# ============================================================================
+# TAB 3: RISK MAP
+# ============================================================================
+
+def render_risk_map(risks: Dict, results: Dict):
+    """Render risk visualization on map"""
+    
+    st.markdown("## 🗺️ Risk Visualization Map")
+    
+    boundary = results.get('boundary', {})
+    centroid = boundary.get('centroid', [5.41, 36.19])
+    geojson = boundary.get('geojson')
+    
+    # Create map
+    m = folium.Map(
+        location=[centroid[1], centroid[0]],
+        zoom_start=14,
+        tiles='OpenStreetMap'
+    )
+    
+    # Add satellite layer
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Satellite',
+        overlay=False
+    ).add_to(m)
+    
+    # Add boundary
+    if geojson:
+        overall = risks.get('overall', {})
+        level = overall.get('level', 'medium')
+        color = get_risk_color(level)
+        
+        folium.GeoJson(
+            geojson,
+            style_function=lambda x: {
+                'fillColor': color,
+                'color': color,
+                'weight': 3,
+                'fillOpacity': 0.3
+            },
+            tooltip=f"Overall Risk: {level.replace('_', ' ').title()}"
+        ).add_to(m)
+    
+    # Add risk markers
+    risk_types = {
+        'flood': ('🌊', 'blue'),
+        'landslide': ('⛰️', 'orange'),
+        'erosion': ('🌾', 'brown'),
+        'seismic': ('🏗️', 'red'),
+        'drought': ('💧', 'lightblue'),
+        'wildfire': ('🔥', 'darkred'),
+        'subsidence': ('🏚️', 'gray')
+    }
+    
+    # Calculate positions for risk markers around centroid
+    positions = [
+        (0.002, 0.002),   # NE
+        (0.002, -0.002),  # SE
+        (-0.002, -0.002), # SW
+        (-0.002, 0.002),  # NW
+        (0.003, 0),       # E
+        (0, 0.003),       # N
+        (-0.003, 0)       # W
+    ]
+    
+    for idx, (risk_key, (emoji, color)) in enumerate(risk_types.items()):
+        risk_data = risks.get(risk_key, {})
+        
+        if risk_data and risk_data.get('level') != 'unknown':
+            severity = risk_data.get('severity', 0)
+            level = risk_data.get('level', 'unknown')
+            description = risk_data.get('description', '')
+            
+            if idx < len(positions):
+                pos = positions[idx]
+                lat = centroid[1] + pos[1]
+                lon = centroid[0] + pos[0]
                 
-                try:
-                    lat = float(coords[1])
-                except (TypeError, ValueError, IndexError):
-                    lat = float(default_lat)
-                return lon, lat
-        except Exception:
-            pass
-        
-        return float(default_lon), float(default_lat)
+                # Create popup content
+                popup_html = f"""
+                <div style='width: 200px'>
+                    <h4>{emoji} {risk_key.title()} Risk</h4>
+                    <b>Level:</b> {level.replace('_', ' ').title()}<br>
+                    <b>Severity:</b> {severity}/5<br>
+                    <hr>
+                    <p style='font-size:12px'>{description}</p>
+                </div>
+                """
+                
+                folium.Marker(
+                    location=[lat, lon],
+                    popup=folium.Popup(popup_html, max_width=300),
+                    icon=folium.Icon(color=color, icon='exclamation-triangle'),
+                    tooltip=f"{emoji} {risk_key.title()}: {level.replace('_', ' ').title()}"
+                ).add_to(m)
+    
+    # Add legend
+    legend_html = """
+    <div style="position: fixed; 
+                bottom: 50px; right: 50px; width: 200px; height: auto; 
+                background-color: white; z-index:9999; font-size:12px;
+                border:2px solid grey; border-radius: 5px; padding: 10px">
+        <h4 style="margin:0 0 10px 0">Risk Levels</h4>
+        <div style="background:#d32f2f;padding:3px;margin:2px;border-radius:3px;color:white">Very High</div>
+        <div style="background:#f57c00;padding:3px;margin:2px;border-radius:3px;color:white">High</div>
+        <div style="background:#fbc02d;padding:3px;margin:2px;border-radius:3px">Medium</div>
+        <div style="background:#388e3c;padding:3px;margin:2px;border-radius:3px;color:white">Low</div>
+        <div style="background:#1b5e20;padding:3px;margin:2px;border-radius:3px;color:white">Very Low</div>
+    </div>
+    """
+    m.get_root().html.add_child(folium.Element(legend_html))
+    
+    # Layer control
+    folium.LayerControl().add_to(m)
+    
+    # Display map
+    st_folium(m, width=800, height=600)
+    
+    st.markdown("""
+    **Map Legend:**
+    - **Boundary Color**: Overall risk level
+    - **Markers**: Individual risk types
+    - Click on markers for detailed risk information
+    """)
 
-    def assess_all_risks(self, geometry: ee.Geometry, features: Dict) -> Dict:
-        """
-        Perform comprehensive risk assessment
-        
-        Args:
-            geometry: Earth Engine geometry
-            features: Extracted features (terrain, environmental, etc.)
-        
-        Returns:
-            Dict containing all risk assessments
-        """
-        
-        risks = {}
-        
-        # Ensure we have basic feature dictionaries
-        if not isinstance(features, dict):
-            features = {}
-        
-        if 'terrain' not in features or not isinstance(features['terrain'], dict):
-            features['terrain'] = {}
-        if 'environmental' not in features or not isinstance(features['environmental'], dict):
-            features['environmental'] = {}
-        
-        try:
-            # 1. Flood Risk
-            risks['flood'] = self._assess_flood_risk(geometry, features)
-        except Exception as e:
-            print(f"Flood risk assessment failed: {e}")
-            risks['flood'] = self._default_risk_assessment('flood')
-        
-        try:
-            # 2. Landslide Risk
-            risks['landslide'] = self._assess_landslide_risk(geometry, features)
-        except Exception as e:
-            print(f"Landslide risk assessment failed: {e}")
-            risks['landslide'] = self._default_risk_assessment('landslide')
-        
-        try:
-            # 3. Erosion Risk
-            risks['erosion'] = self._assess_erosion_risk(geometry, features)
-        except Exception as e:
-            print(f"Erosion risk assessment failed: {e}")
-            risks['erosion'] = self._default_risk_assessment('erosion')
-        
-        try:
-            # 4. Seismic Risk
-            risks['seismic'] = self._assess_seismic_risk(geometry, features)
-        except Exception as e:
-            print(f"Seismic risk assessment failed: {e}")
-            risks['seismic'] = self._default_risk_assessment('seismic')
-        
-        try:
-            # 5. Drought Risk
-            risks['drought'] = self._assess_drought_risk(geometry, features)
-        except Exception as e:
-            print(f"Drought risk assessment failed: {e}")
-            risks['drought'] = self._default_risk_assessment('drought')
-        
-        try:
-            # 6. Wildfire Risk
-            risks['wildfire'] = self._assess_wildfire_risk(geometry, features)
-        except Exception as e:
-            print(f"Wildfire risk assessment failed: {e}")
-            risks['wildfire'] = self._default_risk_assessment('wildfire')
-        
-        try:
-            # 7. Subsidence Risk
-            risks['subsidence'] = self._assess_subsidence_risk(geometry, features)
-        except Exception as e:
-            print(f"Subsidence risk assessment failed: {e}")
-            risks['subsidence'] = self._default_risk_assessment('subsidence')
-        
-        # Calculate overall risk profile
-        risks['overall'] = self._calculate_overall_risk(risks)
-         
-        # Generate risk summary
-        risks['summary'] = self._generate_risk_summary(risks)
-        
-        # Risk mitigation recommendations
-        risks['mitigation'] = self._generate_mitigation_recommendations(risks)
-        
-        return risks
 
-    # ========================================================================
-    # FLOOD RISK ASSESSMENT
-    # ========================================================================
+# ============================================================================
+# TAB 4: MITIGATION STRATEGIES
+# ============================================================================
 
-    def _assess_flood_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
-        """
-        Assess flood risk using multiple indicators:
-        - Water occurrence data
-        - Elevation relative to water bodies
-        - Slope (drainage)
-        - Precipitation patterns
-        """
+def render_mitigation_strategies(risks: Dict):
+    """Render mitigation strategies and recommendations"""
+    
+    st.markdown("## 🛠️ Risk Mitigation Strategies")
+    
+    # Overall recommendations
+    mitigation = risks.get('mitigation', [])
+    
+    if mitigation:
+        st.markdown("### 🎯 Priority Actions")
+        for idx, recommendation in enumerate(mitigation, 1):
+            st.info(f"**{idx}.** {recommendation}")
+    
+    st.markdown("---")
+    
+    # Detailed mitigation by risk type
+    st.markdown("### 📋 Detailed Mitigation Plans")
+    
+    risk_types = [
+        ('flood', '🌊', 'Flood Risk'),
+        ('landslide', '⛰️', 'Landslide Risk'),
+        ('erosion', '🌾', 'Erosion Risk'),
+        ('seismic', '🏗️', 'Seismic Risk'),
+        ('drought', '💧', 'Drought Risk'),
+        ('wildfire', '🔥', 'Wildfire Risk'),
+        ('subsidence', '🏚️', 'Subsidence Risk')
+    ]
+    
+    for risk_key, emoji, title in risk_types:
+        risk_data = risks.get(risk_key, {})
         
-        try:
-            # Get water occurrence from JRC dataset
-            water_data = self.gee_client.get_water_occurrence(geometry)
-            water_occurrence = self._safe_get(water_data, 'water_occurrence_avg', 0.0)
-            
-            # Get terrain data
-            terrain = features.get('terrain', {})
-            slope = self._safe_get(terrain, 'slope_avg', 5.0)
-            elevation = self._safe_get(terrain, 'elevation_avg', 100.0)
-            
-            # Calculate flood risk score (0-100)
-            flood_score = 0.0
-            
-            # Water occurrence is primary indicator
-            flood_score += water_occurrence * 0.6
-            
-            # Low slope increases flood risk
-            if slope < 2.0:
-                flood_score += 20.0
-            elif slope < 5.0:
-                flood_score += 10.0
-            
-            # Low elevation near water increases risk
-            if elevation < 50.0 and water_occurrence > 10.0:
-                flood_score += 20.0
-            
-            # Ensure score doesn't exceed 100
-            flood_score = min(flood_score, 100.0)
-            
-            # Classify risk level
-            if flood_score >= 60.0:
-                level = 'very_high'
-                severity = 5
-            elif flood_score >= 40.0:
-                level = 'high'
-                severity = 4
-            elif flood_score >= 20.0:
-                level = 'medium'
-                severity = 3
-            elif flood_score >= 10.0:
-                level = 'low'
-                severity = 2
-            else:
-                level = 'very_low'
-                severity = 1
-            
-            return {
-                'level': level,
-                'severity': severity,
-                'score': round(flood_score, 1),
-                'water_occurrence': water_occurrence,
-                'affected_area_percent': water_occurrence,
-                'primary_factors': self._get_flood_factors(slope, elevation, water_occurrence),
-                'description': self._get_flood_description(level),
-                'impact': self._get_flood_impact(level)
-            }
-            
-        except Exception as e:
-            print(f"Error assessing flood risk: {e}")
-            return self._default_risk_assessment('flood')
+        if not risk_data or risk_data.get('level') == 'unknown':
+            continue
+        
+        severity = risk_data.get('severity', 0)
+        
+        # Only show mitigation for medium+ risks
+        if severity >= 3:
+            with st.expander(f"{emoji} {title} Mitigation Plan"):
+                render_mitigation_plan(risk_key, risk_data)
+    
+    st.markdown("---")
+    
+    # Cost estimation
+    st.markdown("### 💰 Mitigation Cost Estimation")
+    render_mitigation_costs(risks)
+    
+    st.markdown("---")
+    
+    # Timeline
+    st.markdown("### 📅 Implementation Timeline")
+    render_mitigation_timeline(risks)
 
-    def _get_flood_factors(self, slope: float, elevation: float, water_occ: float) -> List[str]:
-        """Identify primary flood risk factors"""
-        factors = []
-        
-        if water_occ > 30.0:
-            factors.append(f"High water occurrence: {water_occ:.0f}%")
-        if slope < 2.0:
-            factors.append(f"Very flat terrain: {slope:.1f}° (poor drainage)")
-        if elevation < 50.0:
-            factors.append(f"Low elevation: {elevation:.0f}m (flood-prone)")
-        
-        if not factors:
-            factors.append("No significant flood indicators detected")
-        
-        return factors
 
-    def _get_flood_description(self, level: str) -> str:
-        """Get flood risk description"""
-        descriptions = {
-            'very_high': 'Severe flood risk - area experiences frequent flooding',
-            'high': 'Significant flood risk - flooding likely during heavy rainfall',
-            'medium': 'Moderate flood risk - occasional flooding possible',
-            'low': 'Low flood risk - flooding unlikely under normal conditions',
-            'very_low': 'Minimal flood risk - well-drained area'
+def render_mitigation_plan(risk_key: str, risk_data: Dict):
+    """Render detailed mitigation plan for specific risk"""
+    
+    severity = risk_data.get('severity', 0)
+    
+    mitigation_plans = {
+        'flood': {
+            'immediate': [
+                "Conduct detailed flood risk survey",
+                "Install temporary drainage systems",
+                "Elevate critical infrastructure"
+            ],
+            'short_term': [
+                "Install comprehensive drainage network",
+                "Build retention basins",
+                "Implement erosion control measures",
+                "Purchase flood insurance"
+            ],
+            'long_term': [
+                "Construct permanent flood barriers",
+                "Implement sustainable urban drainage systems (SUDS)",
+                "Develop emergency evacuation plans",
+                "Regular maintenance of drainage systems"
+            ],
+            'cost_range': "$50,000 - $500,000"
+        },
+        'landslide': {
+            'immediate': [
+                "Geotechnical investigation",
+                "Identify unstable slopes",
+                "Install warning systems"
+            ],
+            'short_term': [
+                "Build retaining walls on critical slopes",
+                "Implement slope drainage",
+                "Remove unstable materials",
+                "Plant stabilizing vegetation"
+            ],
+            'long_term': [
+                "Regular slope monitoring",
+                "Permanent stabilization structures",
+                "Terracing on steep areas",
+                "Professional slope maintenance"
+            ],
+            'cost_range': "$100,000 - $1,000,000"
+        },
+        'erosion': {
+            'immediate': [
+                "Install erosion control blankets",
+                "Create temporary sediment barriers"
+            ],
+            'short_term': [
+                "Plant ground cover vegetation",
+                "Build terraces on slopes",
+                "Install check dams in channels",
+                "Mulch exposed soil"
+            ],
+            'long_term': [
+                "Establish permanent vegetation",
+                "Maintain erosion control structures",
+                "Implement contour farming",
+                "Regular monitoring and maintenance"
+            ],
+            'cost_range': "$20,000 - $200,000"
+        },
+        'seismic': {
+            'immediate': [
+                "Conduct seismic hazard assessment",
+                "Review local building codes"
+            ],
+            'short_term': [
+                "Design seismic-resistant foundations",
+                "Use flexible building materials",
+                "Install base isolators",
+                "Reinforce existing structures"
+            ],
+            'long_term': [
+                "Regular structural inspections",
+                "Upgrade non-compliant structures",
+                "Develop earthquake emergency plans",
+                "Maintain seismic safety measures"
+            ],
+            'cost_range': "$75,000 - $750,000"
+        },
+        'drought': {
+            'immediate': [
+                "Water resource assessment",
+                "Install rainwater collection systems"
+            ],
+            'short_term': [
+                "Build water storage tanks",
+                "Install efficient irrigation systems",
+                "Implement water conservation measures",
+                "Drill backup wells if feasible"
+            ],
+            'long_term': [
+                "Develop drought-resistant landscaping",
+                "Maintain water infrastructure",
+                "Monitor groundwater levels",
+                "Implement water recycling systems"
+            ],
+            'cost_range': "$30,000 - $300,000"
+        },
+        'wildfire': {
+            'immediate': [
+                "Clear immediate vegetation hazards",
+                "Create defensible space (30m minimum)"
+            ],
+            'short_term': [
+                "Install fire breaks",
+                "Use fire-resistant building materials",
+                "Install sprinkler systems",
+                "Remove dead vegetation regularly"
+            ],
+            'long_term': [
+                "Maintain fire breaks",
+                "Regular vegetation management",
+                "Fire detection systems",
+                "Emergency access roads"
+            ],
+            'cost_range': "$40,000 - $400,000"
+        },
+        'subsidence': {
+            'immediate': [
+                "Detailed soil investigation",
+                "Monitor for ground movement"
+            ],
+            'short_term': [
+                "Design deep foundations",
+                "Implement soil improvement techniques",
+                "Install monitoring equipment",
+                "Avoid excessive groundwater extraction"
+            ],
+            'long_term': [
+                "Regular ground movement monitoring",
+                "Maintain foundation integrity",
+                "Control water table levels",
+                "Professional structural inspections"
+            ],
+            'cost_range': "$60,000 - $600,000"
         }
-        return descriptions.get(level, 'Unknown risk level')
+    }
+    
+    plan = mitigation_plans.get(risk_key, {})
+    
+    if plan:
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("**Immediate Actions** (0-3 months)")
+            for action in plan.get('immediate', []):
+                st.markdown(f"• {action}")
+        
+        with col2:
+            st.markdown("**Short-term** (3-12 months)")
+            for action in plan.get('short_term', []):
+                st.markdown(f"• {action}")
+        
+        with col3:
+            st.markdown("**Long-term** (1-5 years)")
+            for action in plan.get('long_term', []):
+                st.markdown(f"• {action}")
+        
+        st.markdown(f"\n**Estimated Cost Range:** {plan.get('cost_range', 'Contact specialists')}")
 
-    def _get_flood_impact(self, level: str) -> str:
-        """Get flood impact description"""
-        impacts = {
-            'very_high': 'May render land undevelopable; requires major flood protection infrastructure',
-            'high': 'Significant impact on construction and insurance costs; flood mitigation required',
-            'medium': 'Moderate impact; proper drainage systems recommended',
-            'low': 'Minor impact; standard drainage sufficient',
-            'very_low': 'Negligible impact on development'
+
+def render_mitigation_costs(risks: Dict):
+    """Render estimated mitigation costs"""
+    
+    overall = risks.get('overall', {})
+    high_count = overall.get('high_risk_count', 0)
+    medium_count = overall.get('medium_risk_count', 0)
+    
+    # Estimate total costs
+    high_risk_cost = high_count * 400000  # $400k per high risk
+    medium_risk_cost = medium_count * 100000  # $100k per medium risk
+    total_cost = high_risk_cost + medium_risk_cost
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric(
+            "High-Risk Mitigation",
+            f"${high_risk_cost:,}",
+            help=f"{high_count} high-severity risks × $400,000"
+        )
+    
+    with col2:
+        st.metric(
+            "Medium-Risk Mitigation",
+            f"${medium_risk_cost:,}",
+            help=f"{medium_count} medium-severity risks × $100,000"
+        )
+    
+    with col3:
+        st.metric(
+            "Total Estimated Cost",
+            f"${total_cost:,}",
+            delta=f"+{(total_cost/1000000):.1f}M",
+            delta_color="inverse"
+        )
+    
+    st.info("""
+    **Note:** These are rough estimates. Actual costs vary based on:
+    - Site-specific conditions
+    - Local labor and material costs
+    - Regulatory requirements
+    - Chosen mitigation strategies
+    
+    **Recommendation:** Consult with specialized engineers and contractors for accurate quotes.
+    """)
+
+
+def render_mitigation_timeline(risks: Dict):
+    """Render mitigation implementation timeline"""
+    
+    st.markdown("""
+    **Recommended Implementation Sequence:**
+    
+    **Phase 1 (Months 1-3): Assessment & Planning**
+    - Complete all risk assessments
+    - Obtain necessary permits
+    - Design mitigation strategies
+    - Secure financing
+    
+    **Phase 2 (Months 3-6): Critical Mitigation**
+    - Address high-severity risks first
+    - Implement immediate safety measures
+    - Begin construction of permanent solutions
+    
+    **Phase 3 (Months 6-12): Comprehensive Implementation**
+    - Complete medium-severity risk mitigation
+    - Install monitoring systems
+    - Implement vegetation-based solutions
+    
+    **Phase 4 (Years 1-5): Maintenance & Monitoring**
+    - Regular inspections
+    - Maintenance of mitigation structures
+    - Update risk assessments annually
+    - Adjust strategies as needed
+    """)
+    
+    # Timeline visualization
+    timeline_data = {
+        'Phase': ['Assessment', 'Critical', 'Comprehensive', 'Maintenance'],
+        'Start': [0, 3, 6, 12],
+        'Duration': [3, 3, 6, 48],
+        'Priority': ['High', 'Critical', 'Medium', 'Ongoing']
+    }
+    
+    df = pd.DataFrame(timeline_data)
+    
+    fig = px.timeline(
+        df,
+        x_start='Start',
+        x_end=df['Start'] + df['Duration'],
+        y='Phase',
+        color='Priority',
+        title='Mitigation Implementation Timeline (Months)',
+        color_discrete_map={
+            'Critical': '#d32f2f',
+            'High': '#f57c00',
+            'Medium': '#fbc02d',
+            'Ongoing': '#388e3c'
         }
-        return impacts.get(level, 'Unknown impact')
+    )
+    
+    fig.update_yaxes(categoryorder='array', categoryarray=['Maintenance', 'Comprehensive', 'Critical', 'Assessment'])
+    fig.update_layout(height=300)
+    
+    st.plotly_chart(fig, use_container_width=True)
 
-    # ========================================================================
-    # LANDSLIDE RISK ASSESSMENT
-    # ========================================================================
 
-    def _assess_landslide_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
-        """
-        Assess landslide risk based on:
-        - Slope steepness
-        - Elevation variation
-        - Soil type/vegetation cover
-        - Precipitation
-        """
-        
-        try:
-            terrain = features.get('terrain', {})
-            env = features.get('environmental', {})
-            
-            slope_avg = self._safe_get(terrain, 'slope_avg', 0.0)
-            slope_max = self._safe_get(terrain, 'slope_max', 0.0)
-            elevation_max = self._safe_get(terrain, 'elevation_max', 0.0)
-            elevation_min = self._safe_get(terrain, 'elevation_min', 0.0)
-            elevation_range = max(0.0, elevation_max - elevation_min)
-            ndvi = self._safe_get(env, 'ndvi_avg', 0.5)
-            
-            # Calculate landslide risk score
-            landslide_score = 0.0
-            
-            # Steep slopes are primary factor
-            if slope_avg > 30.0:
-                landslide_score += 40.0
-            elif slope_avg > 20.0:
-                landslide_score += 30.0
-            elif slope_avg > 15.0:
-                landslide_score += 20.0
-            elif slope_avg > 10.0:
-                landslide_score += 10.0
-            
-            # Maximum slope
-            if slope_max > 40.0:
-                landslide_score += 30.0
-            elif slope_max > 30.0:
-                landslide_score += 20.0
-            
-            # Elevation variation
-            if elevation_range > 100.0:
-                landslide_score += 20.0
-            elif elevation_range > 50.0:
-                landslide_score += 10.0
-            
-            # Poor vegetation (less soil stability)
-            if ndvi < 0.3:
-                landslide_score += 10.0
-            
-            # Ensure score doesn't exceed 100
-            landslide_score = min(landslide_score, 100.0)
-            
-            # Classify risk
-            if landslide_score >= 70.0:
-                level = 'very_high'
-                severity = 5
-            elif landslide_score >= 50.0:
-                level = 'high'
-                severity = 4
-            elif landslide_score >= 30.0:
-                level = 'medium'
-                severity = 3
-            elif landslide_score >= 15.0:
-                level = 'low'
-                severity = 2
-            else:
-                level = 'very_low'
-                severity = 1
-            
-            return {
-                'level': level,
-                'severity': severity,
-                'score': round(landslide_score, 1),
-                'slope_avg': slope_avg,
-                'slope_max': slope_max,
-                'elevation_range': elevation_range,
-                'primary_factors': self._get_landslide_factors(slope_avg, slope_max, elevation_range),
-                'description': self._get_landslide_description(level),
-                'impact': self._get_landslide_impact(level)
-            }
-            
-        except Exception as e:
-            print(f"Error assessing landslide risk: {e}")
-            return self._default_risk_assessment('landslide')
+# ============================================================================
+# TAB 5: COMPARISON
+# ============================================================================
 
-    def _get_landslide_factors(self, slope_avg: float, slope_max: float, elev_range: float) -> List[str]:
-        """Identify landslide risk factors"""
-        factors = []
-        
-        if slope_avg > 25.0:
-            factors.append(f"Very steep average slope: {slope_avg:.1f}°")
-        elif slope_avg > 15.0:
-            factors.append(f"Steep slopes: {slope_avg:.1f}°")
-        
-        if slope_max > 35.0:
-            factors.append(f"Extremely steep areas: {slope_max:.1f}° maximum")
-        
-        if elev_range > 100.0:
-            factors.append(f"High elevation variation: {elev_range:.0f}m")
-        
-        if not factors:
-            factors.append("Gentle terrain - landslide risk minimal")
-        
-        return factors
-
-    def _get_landslide_description(self, level: str) -> str:
-        """Get landslide risk description"""
-        descriptions = {
-            'very_high': 'Critical landslide risk - unstable slopes present',
-            'high': 'Significant landslide risk - slope stabilization essential',
-            'medium': 'Moderate landslide risk - engineering assessment recommended',
-            'low': 'Low landslide risk - standard precautions sufficient',
-            'very_low': 'Minimal landslide risk - stable terrain'
-        }
-        return descriptions.get(level, 'Unknown risk level')
-
-    def _get_landslide_impact(self, level: str) -> str:
-        """Get landslide impact description"""
-        impacts = {
-            'very_high': 'Development extremely hazardous; may require relocation or extensive engineering',
-            'high': 'Major constraints on development; expensive slope stabilization needed',
-            'medium': 'Moderate impact; proper grading and retaining walls required',
-            'low': 'Minor impact; standard engineering practices sufficient',
-            'very_low': 'Negligible impact on development'
-        }
-        return impacts.get(level, 'Unknown impact')
-
-    # ========================================================================
-    # EROSION RISK ASSESSMENT
-    # ========================================================================
-
-    def _assess_erosion_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
-        """
-        Assess soil erosion risk based on:
-        - Slope
-        - Vegetation cover
-        - Soil type
-        - Precipitation
-        """
-        
-        try:
-            terrain = features.get('terrain', {})
-            env = features.get('environmental', {})
-            
-            slope = self._safe_get(terrain, 'slope_avg', 0.0)
-            ndvi = self._safe_get(env, 'ndvi_avg', 0.5)
-            
-            # Calculate erosion risk score
-            erosion_score = 0.0
-            
-            # Slope factor
-            if slope > 15.0:
-                erosion_score += 30.0
-            elif slope > 10.0:
-                erosion_score += 20.0
-            elif slope > 5.0:
-                erosion_score += 10.0
-            
-            # Vegetation cover (protects against erosion)
-            if ndvi < 0.2:
-                erosion_score += 40.0  # Bare soil
-            elif ndvi < 0.4:
-                erosion_score += 25.0  # Sparse vegetation
-            elif ndvi < 0.6:
-                erosion_score += 10.0  # Moderate vegetation
-            # Good vegetation (ndvi > 0.6) reduces risk
-            
-            # Ensure score doesn't exceed 100
-            erosion_score = min(erosion_score, 100.0)
-            
-            # Classify risk
-            if erosion_score >= 60.0:
-                level = 'very_high'
-                severity = 5
-            elif erosion_score >= 45.0:
-                level = 'high'
-                severity = 4
-            elif erosion_score >= 25.0:
-                level = 'medium'
-                severity = 3
-            elif erosion_score >= 10.0:
-                level = 'low'
-                severity = 2
-            else:
-                level = 'very_low'
-                severity = 1
-            
-            return {
-                'level': level,
-                'severity': severity,
-                'score': round(erosion_score, 1),
-                'slope': slope,
-                'vegetation_cover': ndvi,
-                'primary_factors': self._get_erosion_factors(slope, ndvi),
-                'description': self._get_erosion_description(level),
-                'impact': self._get_erosion_impact(level)
-            }
-            
-        except Exception as e:
-            print(f"Error assessing erosion risk: {e}")
-            return self._default_risk_assessment('erosion')
-
-    def _get_erosion_factors(self, slope: float, ndvi: float) -> List[str]:
-        """Identify erosion risk factors"""
-        factors = []
-        
-        if slope > 15.0:
-            factors.append(f"Steep slopes: {slope:.1f}° (high runoff)")
-        
-        if ndvi < 0.3:
-            factors.append(f"Poor vegetation cover: NDVI {ndvi:.2f}")
-        elif ndvi > 0.6:
-            factors.append(f"Good vegetation cover: NDVI {ndvi:.2f} (protective)")
-        
-        if not factors:
-            factors.append("Moderate conditions - standard erosion control needed")
-        
-        return factors
-
-    def _get_erosion_description(self, level: str) -> str:
-        """Get erosion risk description"""
-        descriptions = {
-            'very_high': 'Severe erosion risk - rapid soil loss expected',
-            'high': 'Significant erosion risk - protective measures essential',
-            'medium': 'Moderate erosion risk - erosion control recommended',
-            'low': 'Low erosion risk - basic measures sufficient',
-            'very_low': 'Minimal erosion risk - stable soil'
-        }
-        return descriptions.get(level, 'Unknown risk level')
-
-    def _get_erosion_impact(self, level: str) -> str:
-        """Get erosion impact description"""
-        impacts = {
-            'very_high': 'Severe soil degradation; expensive erosion control required',
-            'high': 'Significant soil loss; terracing and vegetation establishment needed',
-            'medium': 'Moderate soil loss; erosion control measures recommended',
-            'low': 'Minor soil loss; basic erosion control sufficient',
-            'very_low': 'Negligible soil loss'
-        }
-        return impacts.get(level, 'Unknown impact')
-
-    # ========================================================================
-    # SEISMIC RISK ASSESSMENT
-    # ========================================================================
-
-    def _assess_seismic_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
-        """
-        Assess earthquake/seismic risk
-        Note: For Algeria, using known seismic zones
-        """
-        
-        try:
-            # Get centroid coordinates safely
-            lon, lat = self._safe_get_coords(geometry, 5.41, 36.19)
-            
-            # Algeria seismic zones (simplified)
-            # Northern Algeria (Tell Atlas) is more seismically active
-            seismic_score = self._calculate_algeria_seismic_risk(lat, lon)
-            
-            # Classify risk
-            if seismic_score >= 70.0:
-                level = 'very_high'
-                severity = 5
-                zone = 'IV'
-            elif seismic_score >= 50.0:
-                level = 'high'
-                severity = 4
-                zone = 'III'
-            elif seismic_score >= 30.0:
-                level = 'medium'
-                severity = 3
-                zone = 'II'
-            else:
-                level = 'low'
-                severity = 2
-                zone = 'I'
-            
-            return {
-                'level': level,
-                'severity': severity,
-                'score': round(seismic_score, 1),
-                'seismic_zone': zone,
-                'latitude': lat,
-                'longitude': lon,
-                'primary_factors': self._get_seismic_factors(zone, lat),
-                'description': self._get_seismic_description(level),
-                'impact': self._get_seismic_impact(level)
-            }
-            
-        except Exception as e:
-            print(f"Error assessing seismic risk: {e}")
-            return self._default_risk_assessment('seismic')
-
-    def _calculate_algeria_seismic_risk(self, lat: float, lon: float) -> float:
-        """
-        Calculate seismic risk for Algeria based on known seismic zones
-        Northern coastal areas are high risk (Tell Atlas, active faults)
-        """
-        
-        # High risk zone: Northern Algeria (coastal areas, Tell Atlas)
-        if lat > 36.0:  # Northern coastal region
-            if 2.5 <= lon <= 6.0:  # Algiers-Oran region (very active)
-                return 75.0
-            else:
-                return 60.0
-        
-        # Medium-high risk: North-central
-        elif lat > 35.0:
-            return 50.0
-        
-        # Medium risk: Central plateau
-        elif lat > 33.0:
-            return 35.0
-        
-        # Lower risk: Saharan region
+def render_risk_comparison(risks: Dict):
+    """Render risk comparison and benchmarking"""
+    
+    st.markdown("## 📈 Risk Benchmarking")
+    
+    st.info("""
+    Compare your land's risk profile against typical risk levels for different land uses.
+    This helps contextualize the risks and understand if they're acceptable for your intended use.
+    """)
+    
+    # Risk benchmark data
+    benchmark_data = {
+        'Risk Type': [],
+        'Your Land': [],
+        'Residential (Typical)': [],
+        'Agricultural (Typical)': [],
+        'Commercial (Typical)': []
+    }
+    
+    risk_types = ['Flood', 'Landslide', 'Erosion', 'Seismic', 'Drought', 'Wildfire', 'Subsidence']
+    typical_residential = [2, 2, 2, 3, 2, 2, 1]
+    typical_agricultural = [2, 1, 3, 2, 3, 2, 1]
+    typical_commercial = [2, 2, 2, 3, 2, 2, 2]
+    
+    for idx, risk_type in enumerate(['flood', 'landslide', 'erosion', 'seismic', 'drought', 'wildfire', 'subsidence']):
+        risk_data = risks.get(risk_type, {})
+        if risk_data:
+            benchmark_data['Risk Type'].append(risk_types[idx])
+            benchmark_data['Your Land'].append(risk_data.get('severity', 0))
+            benchmark_data['Residential (Typical)'].append(typical_residential[idx])
+            benchmark_data['Agricultural (Typical)'].append(typical_agricultural[idx])
+            benchmark_data['Commercial (Typical)'].append(typical_commercial[idx])
+    
+    df = pd.DataFrame(benchmark_data)
+    
+    # Create comparison chart
+    fig = go.Figure()
+    
+    fig.add_trace(go.Bar(
+        name='Your Land',
+        x=df['Risk Type'],
+        y=df['Your Land'],
+        marker_color='#1e88e5'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Residential (Typical)',
+        x=df['Risk Type'],
+        y=df['Residential (Typical)'],
+        marker_color='#43a047'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Agricultural (Typical)',
+        x=df['Risk Type'],
+        y=df['Agricultural (Typical)'],
+        marker_color='#fb8c00'
+    ))
+    
+    fig.add_trace(go.Bar(
+        name='Commercial (Typical)',
+        x=df['Risk Type'],
+        y=df['Commercial (Typical)'],
+        marker_color='#e53935'
+    ))
+    
+    fig.update_layout(
+        title='Risk Severity Comparison',
+        xaxis_title='Risk Type',
+        yaxis_title='Severity (0-5)',
+        barmode='group',
+        height=500
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Risk acceptability assessment
+    st.markdown("### ✅ Risk Acceptability Assessment")
+    
+    overall = risks.get('overall', {})
+    avg_severity = overall.get('average_severity', 0)
+    
+    if avg_severity <= 2.0:
+        acceptability = "✅ **LOW RISK** - Acceptable for most land uses"
+        color = "success"
+    elif avg_severity <= 3.0:
+        acceptability = "⚠️ **MODERATE RISK** - Acceptable with standard mitigation"
+        color = "info"
+    elif avg_severity <= 4.0:
+        acceptability = "⚠️ **ELEVATED RISK** - Requires significant mitigation"
+        color = "warning"
+    else:
+        acceptability = "🚫 **HIGH RISK** - May not be suitable for development without extensive mitigation"
+        color = "error"
+    
+    if color == "success":
+        st.success(acceptability)
+    elif color == "info":
+        st.info(acceptability)
+    elif color == "warning":
+        st.warning(acceptability)
+    else:
+        st.error(acceptability)
+    
+    # Recommendations by land use
+    st.markdown("### 🎯 Suitability by Land Use")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**Residential Development**")
+        residential_suitable = avg_severity <= 3.0
+        if residential_suitable:
+            st.success("✅ Generally Suitable")
         else:
-            return 20.0
-
-    def _get_seismic_factors(self, zone: str, lat: float) -> List[str]:
-        """Identify seismic risk factors"""
-        factors = []
-        
-        if lat > 36.0:
-            factors.append("Located in Northern Algeria (Tell Atlas region - active seismic zone)")
-        
-        factors.append(f"Seismic Zone {zone} - building codes apply")
-        
-        return factors
-
-    def _get_seismic_description(self, level: str) -> str:
-        """Get seismic risk description"""
-        descriptions = {
-            'very_high': 'Very high seismic activity - major earthquakes possible',
-            'high': 'Significant seismic activity - moderate to strong earthquakes likely',
-            'medium': 'Moderate seismic activity - seismic design required',
-            'low': 'Low seismic activity - basic seismic precautions sufficient'
-        }
-        return descriptions.get(level, 'Unknown risk level')
-
-    def _get_seismic_impact(self, level: str) -> str:
-        """Get seismic impact description"""
-        impacts = {
-            'very_high': 'Strict seismic design required; significantly higher construction costs',
-            'high': 'Seismic-resistant design essential; increased construction costs',
-            'medium': 'Seismic design standards must be followed',
-            'low': 'Basic seismic provisions sufficient'
-        }
-        return impacts.get(level, 'Unknown impact')
-
-    # ========================================================================
-    # DROUGHT RISK ASSESSMENT
-    # ========================================================================
-
-    def _assess_drought_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
-        """
-        Assess drought risk based on:
-        - Historical precipitation
-        - Water availability
-        - Vegetation stress indicators
-        """
-        
-        try:
-            # Get coordinates safely
-            _, lat = self._safe_get_coords(geometry, 5.41, 36.0)
-            
-            env = features.get('environmental', {})
-            ndvi = self._safe_get(env, 'ndvi_avg', 0.5)
-            
-            # Calculate drought risk (higher score = higher risk)
-            drought_score = 0.0
-            
-            # Latitude-based (Algeria): Southern = more arid
-            if lat < 32.0:  # Saharan region
-                drought_score += 60.0
-            elif lat < 34.0:  # Saharan Atlas
-                drought_score += 40.0
-            elif lat < 36.0:  # High Plateaus
-                drought_score += 25.0
-            else:  # Tell/Coastal
-                drought_score += 10.0
-            
-            # Vegetation health indicator
-            if ndvi < 0.2:  # Very sparse vegetation
-                drought_score += 20.0
-            elif ndvi < 0.4:  # Sparse vegetation
-                drought_score += 10.0
-            
-            # Ensure score doesn't exceed 100
-            drought_score = min(drought_score, 100.0)
-            
-            # Classify risk
-            if drought_score >= 70.0:
-                level = 'very_high'
-                severity = 5
-            elif drought_score >= 50.0:
-                level = 'high'
-                severity = 4
-            elif drought_score >= 30.0:
-                level = 'medium'
-                severity = 3
-            elif drought_score >= 15.0:
-                level = 'low'
-                severity = 2
-            else:
-                level = 'very_low'
-                severity = 1
-            
-            return {
-                'level': level,
-                'severity': severity,
-                'score': round(drought_score, 1),
-                'latitude': lat,
-                'vegetation_health': ndvi,
-                'primary_factors': self._get_drought_factors(lat, ndvi),
-                'description': self._get_drought_description(level),
-                'impact': self._get_drought_impact(level)
-            }
-            
-        except Exception as e:
-            print(f"Error assessing drought risk: {e}")
-            return self._default_risk_assessment('drought')
-
-    def _get_drought_factors(self, lat: float, ndvi: float) -> List[str]:
-        """Identify drought risk factors"""
-        factors = []
-        
-        if lat < 32.0:
-            factors.append("Saharan region - extremely arid climate")
-        elif lat < 34.0:
-            factors.append("Semi-arid region - limited rainfall")
-        elif lat < 36.0:
-            factors.append("Moderate rainfall zone")
+            st.error("❌ Not Recommended")
+        st.markdown(f"*Risk Level: {avg_severity:.1f}/5*")
+    
+    with col2:
+        st.markdown("**Agricultural Use**")
+        # Agriculture can tolerate higher erosion/drought but not landslide
+        landslide_severity = risks.get('landslide', {}).get('severity', 0)
+        ag_suitable = landslide_severity <= 3 and avg_severity <= 3.5
+        if ag_suitable:
+            st.success("✅ Generally Suitable")
         else:
-            factors.append("Coastal/northern region - adequate rainfall")
-        
-        if ndvi < 0.3:
-            factors.append(f"Low vegetation: NDVI {ndvi:.2f} (water stress indicator)")
-        
-        return factors
-
-    def _get_drought_description(self, level: str) -> str:
-        """Get drought risk description"""
-        descriptions = {
-            'very_high': 'Extreme drought risk - water scarcity severe',
-            'high': 'High drought risk - water resources limited',
-            'medium': 'Moderate drought risk - irrigation may be needed',
-            'low': 'Low drought risk - adequate water availability',
-            'very_low': 'Minimal drought risk - good water resources'
-        }
-        return descriptions.get(level, 'Unknown risk level')
-
-    def _get_drought_impact(self, level: str) -> str:
-        """Get drought impact description"""
-        impacts = {
-            'very_high': 'Severe water scarcity; expensive water infrastructure required',
-            'high': 'Significant water challenges; irrigation systems essential',
-            'medium': 'Moderate water concerns; water conservation recommended',
-            'low': 'Minor water concerns; standard water management sufficient',
-            'very_low': 'Adequate water resources available'
-        }
-        return impacts.get(level, 'Unknown impact')
-
-    # ========================================================================
-    # WILDFIRE RISK ASSESSMENT
-    # ========================================================================
-
-    def _assess_wildfire_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
-        """
-        Assess wildfire risk based on:
-        - Vegetation type and density
-        - Climate (dry conditions)
-        - Topography
-        """
-        
-        try:
-            terrain = features.get('terrain', {})
-            env = features.get('environmental', {})
-            
-            # Get coordinates safely
-            _, lat = self._safe_get_coords(geometry, 5.41, 36.0)
-            
-            slope = self._safe_get(terrain, 'slope_avg', 0.0)
-            ndvi = self._safe_get(env, 'ndvi_avg', 0.5)
-            
-            # Calculate wildfire risk
-            wildfire_score = 0.0
-            
-            # Vegetation density (fuel load)
-            if 0.4 < ndvi < 0.7:  # Moderate vegetation = higher fire risk
-                wildfire_score += 30.0
-            elif ndvi > 0.7:  # Dense vegetation
-                wildfire_score += 20.0
-            elif ndvi < 0.2:  # Bare ground - low fuel
-                wildfire_score += 5.0
-            
-            # Slope (fire spreads faster uphill)
-            if slope > 20.0:
-                wildfire_score += 25.0
-            elif slope > 10.0:
-                wildfire_score += 15.0
-            
-            # Climate zone (Northern Algeria more vegetated, higher risk)
-            if lat > 35.0:
-                wildfire_score += 20.0
-            
-            # Ensure score doesn't exceed 100
-            wildfire_score = min(wildfire_score, 100.0)
-            
-            # Classify risk
-            if wildfire_score >= 60.0:
-                level = 'very_high'
-                severity = 5
-            elif wildfire_score >= 45.0:
-                level = 'high'
-                severity = 4
-            elif wildfire_score >= 30.0:
-                level = 'medium'
-                severity = 3
-            elif wildfire_score >= 15.0:
-                level = 'low'
-                severity = 2
-            else:
-                level = 'very_low'
-                severity = 1
-            
-            return {
-                'level': level,
-                'severity': severity,
-                'score': round(wildfire_score, 1),
-                'vegetation_density': ndvi,
-                'slope': slope,
-                'primary_factors': self._get_wildfire_factors(ndvi, slope),
-                'description': self._get_wildfire_description(level),
-                'impact': self._get_wildfire_impact(level)
-            }
-            
-        except Exception as e:
-            print(f"Error assessing wildfire risk: {e}")
-            return self._default_risk_assessment('wildfire')
-
-    def _get_wildfire_factors(self, ndvi: float, slope: float) -> List[str]:
-        """Identify wildfire risk factors"""
-        factors = []
-        
-        if 0.4 < ndvi < 0.7:
-            factors.append(f"Moderate vegetation density: NDVI {ndvi:.2f} (fuel present)")
-        elif ndvi > 0.7:
-            factors.append(f"Dense vegetation: NDVI {ndvi:.2f} (high fuel load)")
-        
-        if slope > 15.0:
-            factors.append(f"Steep slopes: {slope:.1f}° (fire spreads rapidly uphill)")
-        
-        if not factors:
-            factors.append("Low wildfire risk conditions")
-        
-        return factors
-
-    def _get_wildfire_description(self, level: str) -> str:
-        """Get wildfire risk description"""
-        descriptions = {
-            'very_high': 'Critical wildfire risk - high fuel loads and favorable conditions',
-            'high': 'Significant wildfire risk - fire prevention essential',
-            'medium': 'Moderate wildfire risk - fire breaks recommended',
-            'low': 'Low wildfire risk - basic fire safety sufficient',
-            'very_low': 'Minimal wildfire risk'
-        }
-        return descriptions.get(level, 'Unknown risk level')
-
-    def _get_wildfire_impact(self, level: str) -> str:
-        """Get wildfire impact description"""
-        impacts = {
-            'very_high': 'Severe threat to structures; expensive fire protection required',
-            'high': 'Significant threat; fire breaks and defensible space essential',
-            'medium': 'Moderate threat; fire-resistant landscaping recommended',
-            'low': 'Minor threat; basic fire safety measures sufficient',
-            'very_low': 'Negligible fire threat'
-        }
-        return impacts.get(level, 'Unknown impact')
-
-    # ========================================================================
-    # SUBSIDENCE RISK ASSESSMENT
-    # ========================================================================
-
-    def _assess_subsidence_risk(self, geometry: ee.Geometry, features: Dict) -> Dict:
-        """
-        Assess land subsidence risk based on:
-        - Soil type
-        - Water extraction
-        - Terrain characteristics
-        """
-        
-        try:
-            terrain = features.get('terrain', {})
-            
-            # Simplified subsidence risk for Algeria
-            # Higher risk in areas with:
-            # - Soft soils
-            # - Low elevation
-            # - Flat terrain (possible soft sediments)
-            
-            elevation = self._safe_get(terrain, 'elevation_avg', 100.0)
-            slope = self._safe_get(terrain, 'slope_avg', 5.0)
-            
-            subsidence_score = 0.0
-            
-            # Very flat, low-lying areas
-            if elevation < 50.0 and slope < 2.0:
-                subsidence_score += 40.0
-            elif elevation < 100.0 and slope < 3.0:
-                subsidence_score += 20.0
-            
-            # Add generic risk (would need soil data for better assessment)
-            subsidence_score += 10.0
-            
-            # Ensure score doesn't exceed 100
-            subsidence_score = min(subsidence_score, 100.0)
-            
-            # Classify risk
-            if subsidence_score >= 50.0:
-                level = 'high'
-                severity = 4
-            elif subsidence_score >= 30.0:
-                level = 'medium'
-                severity = 3
-            elif subsidence_score >= 15.0:
-                level = 'low'
-                severity = 2
-            else:
-                level = 'very_low'
-                severity = 1
-            
-            return {
-                'level': level,
-                'severity': severity,
-                'score': round(subsidence_score, 1),
-                'elevation': elevation,
-                'slope': slope,
-                'primary_factors': self._get_subsidence_factors(elevation, slope),
-                'description': self._get_subsidence_description(level),
-                'impact': self._get_subsidence_impact(level)
-            }
-            
-        except Exception as e:
-            print(f"Error assessing subsidence risk: {e}")
-            return self._default_risk_assessment('subsidence')
-
-    def _get_subsidence_factors(self, elevation: float, slope: float) -> List[str]:
-        """Identify subsidence risk factors"""
-        factors = []
-        
-        if elevation < 50.0 and slope < 2.0:
-            factors.append(f"Low, flat area: {elevation:.0f}m elevation, {slope:.1f}° slope")
-            factors.append("Possible soft sediments or high water table")
+            st.warning("⚠️ Limited Suitability")
+        st.markdown(f"*Risk Level: {avg_severity:.1f}/5*")
+    
+    with col3:
+        st.markdown("**Commercial Development**")
+        commercial_suitable = avg_severity <= 2.5
+        if commercial_suitable:
+            st.success("✅ Generally Suitable")
         else:
-            factors.append("Terrain characteristics suggest low subsidence risk")
-        
-        return factors
+            st.error("❌ Not Recommended")
+        st.markdown(f"*Risk Level: {avg_severity:.1f}/5*")
 
-    def _get_subsidence_description(self, level: str) -> str:
-        """Get subsidence risk description"""
-        descriptions = {
-            'high': 'Elevated subsidence risk - soil investigation required',
-            'medium': 'Moderate subsidence risk - foundation assessment recommended',
-            'low': 'Low subsidence risk - standard foundation practices',
-            'very_low': 'Minimal subsidence risk'
-        }
-        return descriptions.get(level, 'Unknown risk level')
 
-    def _get_subsidence_impact(self, level: str) -> str:
-        """Get subsidence impact description"""
-        impacts = {
-            'high': 'Potential structural damage; deep foundations may be required',
-            'medium': 'Possible settling; foundation monitoring recommended',
-            'low': 'Minor settling possible; standard foundations sufficient',
-            'very_low': 'Negligible subsidence expected'
-        }
-        return impacts.get(level, 'Unknown impact')
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
 
-    # ========================================================================
-    # OVERALL RISK AGGREGATION
-    # ========================================================================
+def get_risk_color(level: str) -> str:
+    """Get background color for risk level"""
+    colors = {
+        'very_high': '#d32f2f',
+        'high': '#f57c00',
+        'medium': '#fbc02d',
+        'low': '#388e3c',
+        'very_low': '#1b5e20',
+        'unknown': '#757575'
+    }
+    return colors.get(level, '#757575')
 
-    def _calculate_overall_risk(self, risks: Dict) -> Dict:
-        """Calculate overall risk profile"""
-        
-        # Get all individual risks
-        risk_types = ['flood', 'landslide', 'erosion', 'seismic', 'drought', 'wildfire', 'subsidence']
-        
-        # Calculate average severity
-        severities = []
-        for rt in risk_types:
-            if rt in risks and isinstance(risks[rt], dict):
-                severity = risks[rt].get('severity', 0)
-                if isinstance(severity, (int, float)) and severity > 0:
-                    severities.append(severity)
-        
-        avg_severity = np.mean(severities) if severities else 2.0
-        
-        # Count high and very high risks
-        high_risks = sum(1 for rt in risk_types 
-                        if rt in risks 
-                        and isinstance(risks[rt], dict)
-                        and risks[rt].get('severity', 0) >= 4)
-        
-        medium_risks = sum(1 for rt in risk_types 
-                          if rt in risks 
-                          and isinstance(risks[rt], dict)
-                          and risks[rt].get('severity', 0) == 3)
-        
-        # Determine overall level
-        if high_risks >= 3 or avg_severity >= 4.0:
-            overall_level = 'very_high'
-        elif high_risks >= 2 or avg_severity >= 3.5:
-            overall_level = 'high'
-        elif high_risks >= 1 or medium_risks >= 3:
-            overall_level = 'medium'
-        elif medium_risks >= 1:
-            overall_level = 'low'
-        else:
-            overall_level = 'very_low'
-        
-        return {
-            'level': overall_level,
-            'average_severity': round(avg_severity, 2),
-            'high_risk_count': high_risks,
-            'medium_risk_count': medium_risks,
-            'total_risks_assessed': len(severities)
-        }
 
-    def _generate_risk_summary(self, risks: Dict) -> List[str]:
-        """Generate human-readable risk summary"""
-        summary = []
-        
-        # Identify major risks
-        major_risks = []
-        for risk_type in ['flood', 'landslide', 'erosion', 'seismic', 'drought', 'wildfire', 'subsidence']:
-            if risk_type in risks and isinstance(risks[risk_type], dict):
-                severity = risks[risk_type].get('severity', 0)
-                level = risks[risk_type].get('level', 'unknown')
-                if severity >= 4 and level != 'unknown':
-                    major_risks.append(f"{risk_type.title()}: {level.replace('_', ' ').title()}")
-        
-        if major_risks:
-            summary.append(f"⚠️ **Major Risks Identified:** {', '.join(major_risks)}")
-        else:
-            summary.append("✅ **No major risks identified**")
-        
-        # Add overall assessment
-        if 'overall' in risks and isinstance(risks['overall'], dict):
-            overall = risks['overall']
-            summary.append(f"📊 **Overall Risk Level:** {overall.get('level', 'unknown').replace('_', ' ').title()}")
-            summary.append(f"📈 **Average Risk Severity:** {overall.get('average_severity', 0):.1f}/5")
-        
-        return summary
+def get_severity_color(severity: int) -> str:
+    """Get color for severity level (1-5)"""
+    if severity >= 5:
+        return '#d32f2f'  # Dark red
+    elif severity >= 4:
+        return '#f57c00'  # Orange
+    elif severity >= 3:
+        return '#fbc02d'  # Yellow
+    elif severity >= 2:
+        return '#81c784'  # Light green
+    else:
+        return '#388e3c'  # Green
 
-    def _generate_mitigation_recommendations(self, risks: Dict) -> List[str]:
-        """Generate risk mitigation recommendations"""
-        recommendations = []
-        
-        # Flood mitigation
-        if self._get_risk_severity(risks, 'flood') >= 3:
-            recommendations.append("🌊 **Flood:** Install comprehensive drainage systems, consider flood insurance, elevate structures")
-        
-        # Landslide mitigation
-        if self._get_risk_severity(risks, 'landslide') >= 3:
-            recommendations.append("⛰️ **Landslide:** Implement slope stabilization, retaining walls, avoid construction on steep areas")
-        
-        # Erosion mitigation
-        if self._get_risk_severity(risks, 'erosion') >= 3:
-            recommendations.append("🌾 **Erosion:** Plant vegetation, install erosion control structures, terracing on slopes")
-        
-        # Seismic mitigation
-        if self._get_risk_severity(risks, 'seismic') >= 3:
-            recommendations.append("🏗️ **Seismic:** Follow seismic building codes, use flexible foundations, conduct soil analysis")
-        
-        # Drought mitigation
-        if self._get_risk_severity(risks, 'drought') >= 3:
-            recommendations.append("💧 **Drought:** Install water storage systems, implement water conservation, consider drought-resistant landscaping")
-        
-        # Wildfire mitigation
-        if self._get_risk_severity(risks, 'wildfire') >= 3:
-            recommendations.append("🔥 **Wildfire:** Create defensible space, use fire-resistant materials, maintain fire breaks")
-        
-        # Subsidence mitigation
-        if self._get_risk_severity(risks, 'subsidence') >= 3:
-            recommendations.append("🏚️ **Subsidence:** Conduct soil investigation, use deep foundations, monitor for settling")
-        
-        if not recommendations:
-            recommendations.append("✅ **No major mitigation required** - standard construction practices sufficient")
-        
-        return recommendations
 
-    def _get_risk_severity(self, risks: Dict, risk_type: str) -> int:
-        """Safely get severity value for a risk type"""
-        if risk_type in risks and isinstance(risks[risk_type], dict):
-            severity = risks[risk_type].get('severity', 0)
-            if isinstance(severity, (int, float)):
-                return int(severity)
-        return 0
+# ============================================================================
+# EXPORT FUNCTIONALITY
+# ============================================================================
 
-    def _default_risk_assessment(self, risk_type: str) -> Dict:
-        """Return default risk assessment when data unavailable"""
-        return {
-            'level': 'unknown',
-            'severity': 0,
-            'score': 0.0,
-            'primary_factors': ['Data unavailable'],
-            'description': 'Risk assessment unavailable - data not accessible',
-            'impact': 'Unknown - professional assessment recommended'
-        }
+def export_risk_report():
+    """Export comprehensive risk report as PDF"""
+    st.info("PDF export functionality coming soon!")
