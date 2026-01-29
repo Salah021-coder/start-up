@@ -1,9 +1,9 @@
 # ============================================================================
-# FILE: app.py (CORRECTED - REMOVED NON-EXISTENT IMPORT)
+# FILE: app.py (COMPLETE VERSION WITH RISK ANALYSIS PAGE)
 # ============================================================================
 
 import streamlit as st
-from ui.pages import home, analysis, results, history
+from ui.pages import home, analysis, results, history, risk_analysis
 from ui.components.chatbot_widget import render_chatbot
 from utils.ee_manager import EarthEngineManager
 import sys
@@ -89,8 +89,14 @@ def main():
             if st.button("📊 View Results", use_container_width=True):
                 st.session_state.current_page = 'results'
                 st.rerun()
+            
+            # NEW: Risk Analysis button (only show if analysis exists)
+            if st.button("🛡️ Risk Assessment", use_container_width=True,
+                        help="Detailed risk analysis for your land"):
+                st.session_state.current_page = 'risk_analysis'
+                st.rerun()
         
-        # NEW: Heatmap button
+        # Heatmap button
         if st.session_state.boundary_data:
             if st.button("🗺️ Suitability Heatmap", use_container_width=True, 
                         help="Find the best locations within your area"):
@@ -115,8 +121,9 @@ def main():
         analysis.render()
     elif st.session_state.current_page == 'results':
         results.render()
+    elif st.session_state.current_page == 'risk_analysis':
+        risk_analysis.render()
     elif st.session_state.current_page == 'heatmap':
-        # Import heatmap page
         from ui.pages import heatmap
         heatmap.render()
     elif st.session_state.current_page == 'history':
