@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: app.py (UPDATED WITH RISK ANALYSIS PAGE)
+# FILE: app.py (FIXED VERSION)
 # ============================================================================
 
 import streamlit as st
@@ -90,18 +90,11 @@ def main():
                 st.session_state.current_page = 'results'
                 st.rerun()
         
-        # Heatmap button (show if boundary exists)
+        # Heatmap button
         if st.session_state.boundary_data:
             if st.button("🗺️ Suitability Heatmap", use_container_width=True, 
                         help="Find the best locations within your area"):
                 st.session_state.current_page = 'heatmap'
-                st.rerun()
-        
-        # NEW: Risk Analysis button (show if analysis exists)
-        if st.session_state.analysis_results:
-            if st.button("🛡️ Risk Assessment", use_container_width=True,
-                        help="Comprehensive risk analysis"):
-                st.session_state.current_page = 'risk_analysis'
                 st.rerun()
         
         if st.button("📜 History", use_container_width=True):
@@ -123,13 +116,8 @@ def main():
     elif st.session_state.current_page == 'results':
         results.render()
     elif st.session_state.current_page == 'heatmap':
-        # Import heatmap page
         from ui.pages import heatmap
         heatmap.render()
-    elif st.session_state.current_page == 'risk_analysis':
-        # NEW: Risk Analysis page
-        from ui.pages import risk_analysis
-        risk_analysis.render()
     elif st.session_state.current_page == 'history':
         history.render()
 
