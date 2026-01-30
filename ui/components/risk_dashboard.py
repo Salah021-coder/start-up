@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/components/risk_dashboard.py (NEW FILE)
+# FILE: ui/components/risk_dashboard.py (IMPROVED VERSION)
 # ============================================================================
 
 import streamlit as st
@@ -16,9 +16,70 @@ def render_comprehensive_risks(results: Dict):
     env = features.get('environmental', {})
     comprehensive_risks = env.get('comprehensive_risks', {})
     
-    if not comprehensive_risks:
-        st.warning("⚠️ Comprehensive risk assessment not available")
+    # IMPROVED ERROR HANDLING
+    if not comprehensive_risks or comprehensive_risks.get('overall', {}).get('level') == 'unknown':
+        st.warning("""
+        ⚠️ **Comprehensive risk assessment not available**
+        
+        **Why?** The analysis didn't generate risk data.
+        
+        **Solution:**
+        1. Deploy the updated files from the deployment guide
+        2. Re-run your land analysis
+        3. Risk assessment will then be available
+        
+        **Files needed:**
+        - `data/feature_extraction/fallback_risk_assessment.py` (NEW)
+        - `data/feature_extraction/environmental_features.py` (UPDATED)
+        """)
+        
+        with st.expander("📋 Deployment Instructions"):
+            st.markdown("""
+            ### Quick Fix:
+            
+            1. **Upload these files to GitHub:**
+               - `fallback_risk_assessment.py` → `data/feature_extraction/`
+               - `environmental_features_UPDATED.py` → Replace `data/feature_extraction/environmental_features.py`
+            
+            2. **Commit and push:**
+               ```bash
+               git add data/feature_extraction/
+               git commit -m "Add risk assessment fallback system"
+               git push origin main
+               ```
+            
+            3. **Wait 30 seconds** for Streamlit Cloud to redeploy
+            
+            4. **Run a new analysis** - risk data will be generated!
+            
+            ### Files Available:
+            Check your downloaded outputs for:
+            - `RISK_ASSESSMENT_FIX_DEPLOYMENT_GUIDE.md` (complete instructions)
+            - `fallback_risk_assessment.py` (new file)
+            - `environmental_features_UPDATED.py` (replacement)
+            """)
+        
         return
+    
+    # Show data quality indicator
+    data_quality = env.get('data_quality', 'unknown')
+    
+    if data_quality == 'estimated':
+        st.info("""
+        ℹ️ **Risk Assessment Mode:** Estimation-based (Fallback System Active)
+        
+        This analysis uses intelligent location and terrain-based estimates since Google Earth Engine 
+        is not configured. The system provides reasonable risk assessments based on:
+        - Geographic location (latitude/longitude)
+        - Terrain features (slope, elevation)
+        - Algeria-specific seismic zones
+        - Climate patterns
+        
+        **For higher accuracy:** Configure Google Earth Engine in Streamlit secrets
+        (See GEE Configuration Guide)
+        """)
+    elif data_quality == 'gee':
+        st.success("✅ **Risk Assessment Mode:** Earth Engine (High Accuracy) - Using satellite data")
     
     st.markdown("### 🛡️ Comprehensive Risk Assessment")
     
@@ -182,6 +243,10 @@ def _render_risk_severity_chart(risks: Dict, risk_types: Dict):
             else:
                 colors.append('#388e3c')
     
+    if not severities:
+        st.info("No risk data available for chart")
+        return
+    
     # Create horizontal bar chart
     fig = go.Figure(data=[
         go.Bar(
@@ -226,7 +291,7 @@ def render_risk_summary_metrics(results: Dict):
     env = features.get('environmental', {})
     comprehensive_risks = env.get('comprehensive_risks', {})
     
-    if not comprehensive_risks:
+    if not comprehensive_risks or comprehensive_risks.get('overall', {}).get('level') == 'unknown':
         return
     
     overall = comprehensive_risks.get('overall', {})
