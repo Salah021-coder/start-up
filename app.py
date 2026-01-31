@@ -1,9 +1,9 @@
 # ============================================================================
-# FILE: app.py (COMPLETE VERSION WITH RISK ANALYSIS PAGE)
+# FILE: app.py (UPDATED WITH PROPER RISK ASSESSMENT INTEGRATION)
 # ============================================================================
 
 import streamlit as st
-from ui.pages import home, analysis, results, history, risk_analysis
+from ui.pages import home, analysis, results, history
 from ui.components.chatbot_widget import render_chatbot
 from utils.ee_manager import EarthEngineManager
 import sys
@@ -11,6 +11,22 @@ import os
 
 # Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+
+# Import risk_analysis page
+try:
+    from ui.pages import risk_analysis
+    HAS_RISK_ANALYSIS = True
+except ImportError:
+    HAS_RISK_ANALYSIS = False
+    print("⚠️  Risk analysis page not found")
+
+# Import heatmap page
+try:
+    from ui.pages import heatmap
+    HAS_HEATMAP = True
+except ImportError:
+    HAS_HEATMAP = False
+    print("⚠️  Heatmap page not found")
 
 # Page configuration
 st.set_page_config(
@@ -76,10 +92,12 @@ def main():
         st.markdown("---")
         st.markdown("### 📍 Navigation")
         
+        # Home button
         if st.button("🏠 Home", use_container_width=True):
             st.session_state.current_page = 'home'
             st.rerun()
         
+        # New Analysis button
         if st.button("🗺️ New Analysis", use_container_width=True):
             st.session_state.current_page = 'analysis'
             st.rerun()
@@ -90,19 +108,35 @@ def main():
                 st.session_state.current_page = 'results'
                 st.rerun()
             
-            # NEW: Risk Analysis button (only show if analysis exists)
-            if st.button("🛡️ Risk Assessment", use_container_width=True,
-                        help="Detailed risk analysis for your land"):
-                st.session_state.current_page = 'risk_analysis'
-                st.rerun()
+            # Risk Analysis button (only show if analysis exists AND page is available)
+            if HAS_RISK_ANALYSIS:
+                if st.button(
+                    "🛡️ Risk Assessment",
+                    use_container_width=True,
+                    help="Detailed comprehensive risk analysis"
+                ):
+                    st.session_state.current_page = 'risk_analysis'
+                    st.rerun()
+            else:
+                # Show disabled button with tooltip
+                st.button(
+                    "🛡️ Risk Assessment",
+                    use_container_width=True,
+                    disabled=True,
+                    help="Risk analysis page not available"
+                )
         
-        # Heatmap button
-        if st.session_state.boundary_data:
-            if st.button("🗺️ Suitability Heatmap", use_container_width=True, 
-                        help="Find the best locations within your area"):
+        # Heatmap button (show if boundary exists AND page available)
+        if st.session_state.boundary_data and HAS_HEATMAP:
+            if st.button(
+                "🗺️ Suitability Heatmap",
+                use_container_width=True,
+                help="Find the best locations within your area"
+            ):
                 st.session_state.current_page = 'heatmap'
                 st.rerun()
         
+        # History button
         if st.button("📜 History", use_container_width=True):
             st.session_state.current_page = 'history'
             st.rerun()
@@ -113,21 +147,65 @@ def main():
             st.success("✅ Earth Engine Ready")
         else:
             st.error("❌ Earth Engine Offline")
+        
+        # Show feature availability
+        st.markdown("---")
+        st.markdown("### 🔧 Features")
+        st.markdown(f"{'✅' if HAS_RISK_ANALYSIS else '❌'} Risk Assessment")
+        st.markdown(f"{'✅' if HAS_HEATMAP else '❌'} Suitability Heatmap")
     
     # Render current page
-    if st.session_state.current_page == 'home':
-        home.render()
-    elif st.session_state.current_page == 'analysis':
-        analysis.render()
-    elif st.session_state.current_page == 'results':
-        results.render()
-    elif st.session_state.current_page == 'risk_analysis':
-        risk_analysis.render()
-    elif st.session_state.current_page == 'heatmap':
-        from ui.pages import heatmap
-        heatmap.render()
-    elif st.session_state.current_page == 'history':
-        history.render()
+    current_page = st.session_state.current_page
+    
+    try:
+        if current_page == 'home':
+            home.render()
+        
+        elif current_page == 'analysis':
+            analysis.render()
+        
+        elif current_page == 'results':
+            results.render()
+        
+        elif current_page == 'risk_analysis':
+            if HAS_RISK_ANALYSIS:
+                risk_analysis.render()
+            else:
+                st.error("❌ Risk analysis page not available")
+                st.info("The risk_analysis.py file may be missing or have import errors.")
+                if st.button("Return to Home"):
+                    st.session_state.current_page = 'home'
+                    st.rerun()
+        
+        elif current_page == 'heatmap':
+            if HAS_HEATMAP:
+                heatmap.render()
+            else:
+                st.error("❌ Heatmap page not available")
+                st.info("The heatmap.py file may be missing or have import errors.")
+                if st.button("Return to Home"):
+                    st.session_state.current_page = 'home'
+                    st.rerun()
+        
+        elif current_page == 'history':
+            history.render()
+        
+        else:
+            st.error(f"Unknown page: {current_page}")
+            if st.button("Return to Home"):
+                st.session_state.current_page = 'home'
+                st.rerun()
+    
+    except Exception as e:
+        st.error(f"❌ Error rendering page '{current_page}': {str(e)}")
+        
+        with st.expander("Show Error Details"):
+            import traceback
+            st.code(traceback.format_exc())
+        
+        if st.button("Return to Home"):
+            st.session_state.current_page = 'home'
+            st.rerun()
 
 if __name__ == "__main__":
     main()
