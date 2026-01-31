@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/pages/analysis.py (UPDATED - WORKING VERSION)
+# FILE: ui/pages/analysis.py (FIXED - session_state dict compatibility)
 # ============================================================================
 
 import streamlit as st
@@ -292,6 +292,42 @@ def render_sample_boundary():
             run_analysis()
 
 
+def _coerce_to_dict(results) -> dict:
+    """
+    Ensure analysis results are stored as a plain dict in session_state.
+
+    AnalysisResult is a frozen dataclass — Streamlit's session_state can't
+    reliably round-trip arbitrary objects, and the UI pages all call .get()
+    expecting a dict.  This function handles three cases:
+
+        1. Already a dict            → return as-is
+        2. AnalysisResult dataclass  → call .to_legacy_format()
+        3. Anything else             → wrap in a minimal dict so nothing crashes
+    """
+    # Case 1: already a plain dict — most common after the first fix lands
+    if isinstance(results, dict):
+        return results
+
+    # Case 2: the AnalysisResult dataclass from the pipeline
+    if hasattr(results, 'to_legacy_format'):
+        return results.to_legacy_format()
+
+    # Case 3: unexpected type — wrap it so downstream .get() calls don't explode
+    # This should never happen in practice, but it's a safety net.
+    return {
+        'analysis_id': getattr(results, 'analysis_id', 'unknown'),
+        'overall_score': getattr(results, 'overall_score', 0),
+        'confidence_level': getattr(results, 'confidence_level', 0),
+        'boundary': {},
+        'features': {},
+        'recommendations': [],
+        'key_insights': {},
+        'risk_assessment': {'level': 'unknown', 'risk_count': 0},
+        'data_sources': {},
+        '_raw': results  # keep original for debugging
+    }
+
+
 def run_analysis():
     """Run the land analysis"""
     
@@ -321,8 +357,18 @@ def run_analysis():
             progress_callback=update_progress
         )
         
-        # Store results
-        st.session_state.analysis_results = results
+        # ---------------------------------------------------------------
+        # FIX: Convert to a plain dict before storing in session_state.
+        #
+        # The pipeline returns an AnalysisResult (frozen dataclass).
+        # All UI pages (results.py, risk_analysis.py, history.py, the
+        # chatbot widget) call results.get('key', default), which only
+        # works on dicts.  Storing a dataclass directly causes:
+        #     "tuple indices must be integers or slices, not str"
+        # because Streamlit may serialize it as a tuple, or because
+        # dataclass instances are not subscriptable.
+        # ---------------------------------------------------------------
+        st.session_state.analysis_results = _coerce_to_dict(results)
         st.session_state.current_page = 'results'
         
         st.success("✅ Analysis complete!")
@@ -331,6 +377,4 @@ def run_analysis():
         
     except Exception as e:
         st.error(f"❌ Analysis failed: {str(e)}")
-
         st.info("Please try again or contact support if the problem persists.")
-
