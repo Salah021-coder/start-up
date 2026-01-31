@@ -1,5 +1,5 @@
 # ============================================================================
-# FILE: ui/pages/analysis.py (FIXED - session_state dict compatibility)
+# FILE: ui/pages/analysis.py
 # ============================================================================
 
 import streamlit as st
@@ -292,45 +292,17 @@ def render_sample_boundary():
             run_analysis()
 
 
-def _coerce_to_dict(results) -> dict:
-    """
-    Ensure analysis results are stored as a plain dict in session_state.
-
-    AnalysisResult is a frozen dataclass — Streamlit's session_state can't
-    reliably round-trip arbitrary objects, and the UI pages all call .get()
-    expecting a dict.  This function handles three cases:
-
-        1. Already a dict            → return as-is
-        2. AnalysisResult dataclass  → call .to_legacy_format()
-        3. Anything else             → wrap in a minimal dict so nothing crashes
-    """
-    # Case 1: already a plain dict — most common after the first fix lands
-    if isinstance(results, dict):
-        return results
-
-    # Case 2: the AnalysisResult dataclass from the pipeline
-    if hasattr(results, 'to_legacy_format'):
-        return results.to_legacy_format()
-
-    # Case 3: unexpected type — wrap it so downstream .get() calls don't explode
-    # This should never happen in practice, but it's a safety net.
-    return {
-        'analysis_id': getattr(results, 'analysis_id', 'unknown'),
-        'overall_score': getattr(results, 'overall_score', 0),
-        'confidence_level': getattr(results, 'confidence_level', 0),
-        'boundary': {},
-        'features': {},
-        'recommendations': [],
-        'key_insights': {},
-        'risk_assessment': {'level': 'unknown', 'risk_count': 0},
-        'data_sources': {},
-        '_raw': results  # keep original for debugging
-    }
-
-
 def run_analysis():
-    """Run the land analysis"""
-    
+    """
+    Run the land analysis.
+
+    Flow:
+        1. CriteriaEngine picks weights           → {"criteria": {…}, "land_use": "…"}
+        2. AnalysisProcessor runs the pipeline    → delegates to AnalysisService
+                                                  → converts AnalysisResult to dict internally
+        3. Store directly into session_state      → results.py, risk_analysis.py, chatbot
+                                                    can all safely call .get() on it
+    """
     boundary_data = st.session_state.boundary_data
     
     # Show progress
@@ -342,34 +314,31 @@ def run_analysis():
         progress_bar.progress(percent / 100)
     
     try:
-        # Auto-select criteria
+        # Step 1 – select criteria
         update_progress("Auto-selecting evaluation criteria...", 10)
         criteria_engine = CriteriaEngine()
-        criteria = criteria_engine.auto_select_criteria(boundary_data)
-        
-        # Run analysis
+        criteria_result = criteria_engine.auto_select_criteria(boundary_data)
+        # criteria_result == {"criteria": {…nested weights…}, "land_use": "residential"}
+
+        # Step 2 – run pipeline
+        # AnalysisProcessor internally:
+        #   • calls AnalysisService.analyze_land()
+        #   • which calls AnalysisPipeline.run_analysis()
+        #   • converts the returned AnalysisResult dataclass via .to_legacy_format()
+        # So what comes back is always a plain dict — safe to store directly.
         update_progress("Running comprehensive analysis...", 20)
         processor = AnalysisProcessor()
-        
+
         results = processor.run_analysis(
             boundary_data,
-            criteria['criteria'],
+            criteria_result['criteria'],      # the nested weight dict
             progress_callback=update_progress
         )
-        
-        # ---------------------------------------------------------------
-        # FIX: Convert to a plain dict before storing in session_state.
-        #
-        # The pipeline returns an AnalysisResult (frozen dataclass).
-        # All UI pages (results.py, risk_analysis.py, history.py, the
-        # chatbot widget) call results.get('key', default), which only
-        # works on dicts.  Storing a dataclass directly causes:
-        #     "tuple indices must be integers or slices, not str"
-        # because Streamlit may serialize it as a tuple, or because
-        # dataclass instances are not subscriptable.
-        # ---------------------------------------------------------------
-        st.session_state.analysis_results = _coerce_to_dict(results)
-        st.session_state.current_page = 'results'
+
+        # Step 3 – hand off to results page
+        # results is already a plain dict (AnalysisProcessor guarantees this)
+        st.session_state.analysis_results = results
+        st.session_state.current_page     = 'results'
         
         st.success("✅ Analysis complete!")
         st.balloons()
